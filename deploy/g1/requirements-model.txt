@@ -1,0 +1,10 @@
+-r requirements-client.txt
+transformers==5.5.3
+accelerate==1.13.0
+diffusers==0.35.2
+safetensors==0.7.0
+huggingface-hub==1.15.0
+omegaconf==2.3.0
+rich>=13
+einops>=0.8
+qwen-vl-utils==0.0.14

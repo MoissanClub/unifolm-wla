@@ -272,3 +272,9 @@ unifolm_wla/model/framework/VLM4A/QwenGR00T_v2.py
 plot_loss.py
 2026-05-17-164700-local-command-caveatcaveat-the-messages-below.txt
 unifolm_wla/scripts
+
+# Local G1 deployment documentation and tests are deliverables.
+!deploy/g1/*.md
+!deploy/g1/tests/
+!deploy/g1/tests/*.py
+.venv-g1-*/
