@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reference x86 CUDA training environment: upstream `uv sync`. No training on the robot.
+# Run in a provisioned workstation conda training environment. No training on the robot.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 model_dir=$(realpath "${1:?Usage: finetune.sh MODEL_DIR DATA_CONFIG RUN_DIR [full|lora]}")
@@ -16,12 +16,13 @@ case "$method" in
   lora) training_config=unifolm_wla/config/training/mmdit_lora_frozen_vlm.yaml ;;
   *) echo "Expected full or lora" >&2; exit 2 ;;
 esac
+python -c 'from deploy.g1.dependencies import verify_conda; verify_conda()'
 [[ ! -e "$run_dir" ]] || { echo "Run directory already exists: $run_dir" >&2; exit 2; }
 mkdir -p "$run_dir"
 export WANDB_MODE=disabled
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 # Upstream launchers reference a missing deepspeed_zero2.yaml. Supply the actual config explicitly.
-.venv/bin/accelerate launch --use_deepspeed --num_processes "${NUM_PROCESSES:-1}" \
+python -m accelerate.commands.launch --use_deepspeed --num_processes "${NUM_PROCESSES:-1}" \
   --num_machines 1 --machine_rank 0 --mixed_precision bf16 \
   --deepspeed_config_file unifolm_wla/config/deepseeds/ds_config.yaml \
   unifolm_wla/training/train_unifolm_wla.py --config_yaml "$training_config" \

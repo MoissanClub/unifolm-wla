@@ -1,0 +1,6 @@
+-r requirements-model.txt
+# Reuse PC2's ONNX 1.23 if installed; do not downgrade it to the earlier test version.
+onnx>=1.21,<2
+onnxscript>=0.7.2,<0.8
+# 0.6 requires NumPy 2, incompatible with this robot's Pinocchio build.
+ml-dtypes>=0.5.4,<0.6

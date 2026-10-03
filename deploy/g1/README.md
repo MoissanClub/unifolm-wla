@@ -24,31 +24,52 @@ constructing a second full copy of the model. If latency consumes its one-second
 the arm executor rejects the result. A slow policy server remains useful for observation-only evaluation.
 
 All commands below run from `unifolm-wla/`. `python` means the activated environment's interpreter.
-Do not run the upstream `uv sync` inside PC2's existing robot environment: its full training dependency
-set and torch wheel selection do not constitute a validated JetPack installation.
+Use the existing conda environment. Installing the upstream project's full dependency set into PC2's
+robot environment would select different torch, NumPy and training packages.
 
 ## 1. Install and inspect
 
-On PC2, use the Python that already imports the SDK, Pinocchio, OpenCV and RealSense. For example:
+On PC2, reuse the proven `g1fetch` conda environment and its activation hooks:
 
 ```bash
 cd ~/junda/unifolm-wla
-PYTHON_BIN="$HOME/miniconda3/envs/g1fetch/bin/python" bash deploy/g1/setup.sh client
-source .venv-g1-client/bin/activate
+CONDA_ENV=g1fetch bash deploy/g1/setup.sh client --check
+CONDA_ENV=g1fetch bash deploy/g1/setup.sh client
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
+conda activate g1fetch
 python -m deploy.g1.assets preflight
 ```
 
-`setup.sh` creates a separate venv and constrains existing torch, torchvision, NumPy and SciPy versions.
-It does not install/replace CUDA, TensorRT, the DDS SDK, Pinocchio, or librealsense.
-If your conda path differs, set `PYTHON_BIN` accordingly. The model environment must already have
-working CUDA PyTorch >=2.8 plus matching torchvision. On Jetson, obtain a wheel/container explicitly
-compatible with the board's JetPack and Python; no unverified wheel URL is embedded in this script.
+`--check` is an offline inventory/import check and exits nonzero for missing or incompatible dependencies.
+The normal command installs missing packages only. `--dry-run` resolves and displays proposed additions
+without installing them; it may access the package index. Reruns skip pip when requirements are satisfied.
+
+Setup freezes **every installed Python distribution**, including transitive dependencies. It checks pip's
+proposed transaction before applying the exact hashed archives with `--no-deps`. Existing incompatible
+versions cause a stop, not an upgrade or downgrade. It also refuses to install native/GPU packages through
+the application dependency resolver: torch/torchvision, CUDA/cuDSS, TensorRT, NumPy/SciPy, Pinocchio,
+OpenCV, RealSense and DDS must already be provisioned. NumPy stays below 2 for the existing Pinocchio ABI.
+Model-library pins remain the tested versions; a different installed version is reported for review.
+
+`CONDA_ENV` accepts an existing environment name or prefix; it defaults to `g1fetch`. Set `CONDA_EXE`
+if conda is outside PATH and `~/miniconda3`. Setup activates conda so CUDA/cuDSS library hooks take effect.
+It does not create environments, run apt, rewrite activation hooks or replace system TensorRT bindings.
+If you need isolation, explicitly clone the working environment first, for example
+`conda create -n g1wla --clone g1fetch --offline`, then use `CONDA_ENV=g1wla`.
+
+The [PC2 deployment learnings](../../../g1-fridge-fetch/docs/05_deploy_learnings.md) and
+[dependency details](../../../g1-fridge-fetch/docs/06_dependency_learnings.md) are the platform reference:
+Python 3.10, the Jetson `jp6/cu126` torch build (verified there: torch 2.11.0 / torchvision 0.26.0),
+cuDSS library paths, and system TensorRT 10.3 exposed to conda. Model setup tests an actual BF16 CUDA
+matrix multiply and imports TensorRT on Jetson. A missing library or wrong torch build stops setup;
+repair the identified component using those notes before retrying. No camera or DDS connection is opened.
 
 On the inference machine (PC2 for the onboard experiment, otherwise the GPU host):
 
 ```bash
-PYTHON_BIN=/path/to/cuda-python bash deploy/g1/setup.sh model
-source .venv-g1-model/bin/activate
+CONDA_ENV=g1fetch bash deploy/g1/setup.sh model --check
+CONDA_ENV=g1fetch bash deploy/g1/setup.sh model
+conda activate g1fetch
 python -m deploy.g1.assets fetch
 python -m deploy.g1.assets inspect
 ```
@@ -126,11 +147,13 @@ does not account for all Jetson memory.
 
 ## 4. Evaluate recorded Unitree episodes
 
-Use upstream's **separate workstation training environment** for LeRobot/video dependencies:
+Use a **separate, provisioned workstation conda training environment** with upstream's LeRobot 0.5.0
+and video/training dependencies. This deployment installer covers the client, model server and ONNX
+export; it does not provision the full training stack. The upstream Python 3.12 training dependency set
+belongs in that separate environment, not the robot's Python 3.10 environment:
 
 ```bash
-uv sync
-source .venv/bin/activate
+conda activate g1wla-train
 export DATA_ROOT="$PWD/playground/g1-data"
 hf download unitreerobotics/G1_WBT_Brainco_Put_Drinks_Into_Fridge --repo-type dataset \
   --revision 7c6a9f562d599a84186ae866198a2e06ee6d9ad5 \
@@ -184,12 +207,17 @@ and pose decoding outside TensorRT. It is not a full-policy engine and does not 
 On a host with sufficient RAM (the FP32 ONNX weights alone are about 5.56 GB):
 
 ```bash
-python -m pip install -c .venv-g1-model/binary-constraints.txt \
-  onnx==1.21.0 onnxscript==0.7.2 ml-dtypes==0.5.4
+CONDA_ENV=g1wla bash deploy/g1/setup.sh export --check
+CONDA_ENV=g1wla bash deploy/g1/setup.sh export
+conda activate g1wla
 python -m deploy.g1.trt \
   --checkpoint playground/Pretrained_models/UnifoLM-WLA-1.0-Base/checkpoints/model.safetensors \
   --out results/trt/action.onnx --tokens 1024
 ```
+
+The example uses an existing `g1wla` export environment; change `CONDA_ENV` to your actual environment.
+Export may use CPU PyTorch >=2.8. The same dependency preservation rules apply; an installed ONNX 1.23
+is reused, and `ml-dtypes` 0.6 is rejected because it requires NumPy 2.
 
 Copy the ONNX **and all external data files** to PC2, then build there:
 
@@ -217,6 +245,8 @@ Preserve the NumPy version used by compiled robotics packages when adding export
 NumPy 2 can be ABI-incompatible with existing Pinocchio binaries. These tests do not contact a robot.
 The local validation report is in [RESEARCH.md](RESEARCH.md).
 
-`fridge_baseline.sh sim` and `fridge_baseline.sh check` expose the existing structured controller for
-comparison. Its current full-task test fails at door-opening reachability; it is **not** a completed
-alternative. See [FRIDGE_PLAN.md](FRIDGE_PLAN.md) for the work needed to reach a defensible full task trial.
+`fridge_baseline.sh sim` and `fridge_baseline.sh check` expose the separate structured controller for
+comparison. The September 30 test results in RESEARCH.md predate its latest bring-up work; use the
+[October 2 deployment learnings](../../../g1-fridge-fetch/docs/05_deploy_learnings.md) for its newer hardware
+status. Those notes confirm search and approach, with door manipulation still unverified.
+See [FRIDGE_PLAN.md](FRIDGE_PLAN.md) for the work needed to reach a defensible full task trial.

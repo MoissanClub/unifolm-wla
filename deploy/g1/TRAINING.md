@@ -70,9 +70,11 @@ ready-to-train WLA dataset. Keep the new complete records.
 
 ## Convert and select train/validation sessions
 
-On the workstation, in the upstream `uv sync` environment (LeRobot 0.5.0):
+On the workstation, activate a separate, provisioned conda training environment with LeRobot 0.5.0
+and the upstream training/video dependencies (see the deployment guide's environment requirements):
 
 ```bash
+conda activate g1wla-train
 python -m deploy.g1.demonstrations /data/fridge-demos/train \
   --out /data/g1-train/UnifoLM_WBT_Dataset/fridge_skills
 python -m deploy.g1.demonstrations /data/fridge-demos/validation \
