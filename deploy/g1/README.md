@@ -8,19 +8,23 @@ experimental TensorRT action-head path. No robot motion was performed while deve
 Start with [research and limitations](RESEARCH.md), [the complete fridge task plan](FRIDGE_PLAN.md),
 and [demonstration collection and training](TRAINING.md).
 
+The [October 5 onboard deployment report](DEPLOYMENT.md) records a verified download, preserved
+conda dependencies, and full BF16 inference on the 16 GB Orin NX without robot motion.
+Warm synthetic inference took 1.63 s with one view and 3.49 s with three views at 15 W.
+
 ## What runs where
 
 | Component | Recommended first evaluation | Entirely onboard experiment |
 |---|---|---|
 | Cameras, DDS, FK/IK, arm test | PC2, existing robot Python environment | Same |
-| Released 6.23B policy | Separate NVIDIA GPU, preferably 24 GB or more | PC2 only after memory/latency measurements |
+| Released 6.23B policy | Separate NVIDIA GPU, preferably 24 GB or more | Offline inference verified; exceeds the action horizon at 15 W |
 | Fine-tuning / ONNX export | Workstation GPU / sufficiently large host | Not the initial PC2 workflow |
 | TensorRT engine build | Destination Jetson, same TRT version | Same |
 
 Weights alone occupy **11.60 GiB** at BF16. The Orin NX's memory is shared with the OS, cameras,
-CUDA workspaces and activations. Loading may fit on a quiet 16 GB machine; real-time inference is
-**unmeasured and not promised**. An 8 GB module cannot hold the full BF16 weights. The loader avoids
-constructing a second full copy of the model. If latency consumes its one-second action horizon,
+CUDA workspaces and activations. The full model fits this 16 GB machine with little remaining memory;
+measured inference at 15 W exceeds the one-second action horizon. An 8 GB module cannot hold the
+full BF16 weights. The loader avoids constructing a second full copy of the model. If latency consumes its one-second action horizon,
 the arm executor rejects the result. A slow policy server remains useful for observation-only evaluation.
 
 All commands below run from `unifolm-wla/`. `python` means the activated environment's interpreter.
@@ -78,7 +82,8 @@ The download is pinned to HF revision `dedc0612c4a921446db3a8cb0864bb7f7433329e`
 `fetch --metadata-only` omits the 12.46 GB weight file. The default bundle directory is
 `playground/Pretrained_models/UnifoLM-WLA-1.0-Base`.
 The Python 3.10 client and model imports were tested here; upstream's reference environment is Python 3.12.
-CUDA execution and a Jetson package installation have not been tested here.
+CUDA execution and the dependency-preserving Jetson installation passed on October 5; see the
+[onboard report](DEPLOYMENT.md) for versions, measurements, and remaining limitations.
 
 ## 2. Start the policy server
 

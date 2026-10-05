@@ -1,5 +1,8 @@
 # Findings, checked 2026-09-30
 
+This research snapshot predates the [October 5 onboard validation](DEPLOYMENT.md), which verifies
+full BF16 inference on this G1 without motion. Hardware latency and memory results are recorded there.
+
 The released model is a useful starting point for an evaluation/fine-tuning project. The evidence does
 not support “download, convert to TensorRT, and fetch a drink” on this 23-DoF G1.
 

@@ -1,0 +1,365 @@
+{
+  "date_utc": "2026-10-05",
+  "code_commit": "ab9a1a6ef6d8113325c12cca538a71b5a8508ce0",
+  "robot_commands": false,
+  "power_mode": "15W",
+  "preflight": {
+    "machine": "aarch64",
+    "python": "3.10.21",
+    "l4t": [
+      "# R36 (release), REVISION: 4.3, GCID: 38968081, BOARD: generic, EABI: aarch64, DATE: Wed Jan  8 01:49:37 UTC 2025"
+    ],
+    "memory": [
+      "MemTotal:       16031316 kB",
+      "MemFree:        11974704 kB",
+      "MemAvailable:   13927284 kB"
+    ],
+    "torch": "2.11.0",
+    "cuda": "12.6",
+    "cuda_available": true,
+    "bf16_matmul": 32.0,
+    "gpu_memory_free_total": [
+      13587312640,
+      16416067584
+    ],
+    "tensorrt": "10.3.0"
+  },
+  "architecture": {
+    "parameters": 6229360182,
+    "tensor_count": 1256,
+    "meta_parameters": true
+  },
+  "dependency_changes": {
+    "changed": {},
+    "added": {
+      "accelerate": "1.13.0",
+      "annotated-doc": "0.0.5",
+      "antlr4-python3-runtime": "4.9.3",
+      "anyio": "4.15.1",
+      "av": "17.1.0",
+      "diffusers": "0.35.2",
+      "einops": "0.8.2",
+      "h11": "0.16.0",
+      "hf-xet": "1.6.0",
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1",
+      "huggingface-hub": "1.15.0",
+      "importlib-metadata": "9.0.1",
+      "omegaconf": "2.3.0",
+      "qwen-vl-utils": "0.0.14",
+      "regex": "2026.9.29",
+      "safetensors": "0.7.0",
+      "shellingham": "1.5.4",
+      "tokenizers": "0.22.2",
+      "tqdm": "4.70.1",
+      "transformers": "5.5.3",
+      "typer": "0.27.2",
+      "zipp": "4.1.1"
+    }
+  },
+  "download_verified": [
+    {
+      "file": ".gitattributes",
+      "bytes": 1580
+    },
+    {
+      "file": "README.md",
+      "bytes": 28
+    },
+    {
+      "file": "checkpoints/model.safetensors",
+      "bytes": 12458898964,
+      "sha256": "65ac8911ce5556631cb538fb4d3499d9131d95b1da4eb1ce970c4215997d3299"
+    },
+    {
+      "file": "config.yaml",
+      "bytes": 1069
+    },
+    {
+      "file": "dataset_statistics.json",
+      "bytes": 10635
+    },
+    {
+      "file": "tokenizer/chat_template.jinja",
+      "bytes": 1017
+    },
+    {
+      "file": "tokenizer/config.json",
+      "bytes": 2878
+    },
+    {
+      "file": "tokenizer/generation_config.json",
+      "bytes": 163
+    },
+    {
+      "file": "tokenizer/preprocessor_config.json",
+      "bytes": 356
+    },
+    {
+      "file": "tokenizer/processor_config.json",
+      "bytes": 1190
+    },
+    {
+      "file": "tokenizer/tokenizer.json",
+      "bytes": 11664434,
+      "sha256": "a1e145e8cfa1628db983564cf768a5b775299bfb65a53c1f823b4ba510f0aa9e"
+    },
+    {
+      "file": "tokenizer/tokenizer_config.json",
+      "bytes": 24026
+    }
+  ],
+  "synthetic_smoke": {
+    "input_type": "synthetic_zero_images_and_synthetic_state",
+    "robot_commands": false,
+    "torch": "2.11.0",
+    "image_size_hw": [
+      336,
+      448
+    ],
+    "runs": [
+      {
+        "case": "head-only",
+        "iteration": 0,
+        "shape": [
+          30,
+          54
+        ],
+        "finite": true,
+        "encode_ms": 4129.685344000109,
+        "head_ms": 873.2633179999993,
+        "total_ms": 5002.948662000108,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 1,
+        "shape": [
+          30,
+          54
+        ],
+        "finite": true,
+        "encode_ms": 930.9068150000712,
+        "head_ms": 717.8946619999351,
+        "total_ms": 1648.8014770000063,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "three-view",
+        "iteration": 0,
+        "shape": [
+          30,
+          54
+        ],
+        "finite": true,
+        "encode_ms": 2147.338082000033,
+        "head_ms": 1456.622482000057,
+        "total_ms": 3603.96056400009,
+        "tokens": 490,
+        "allocated_gib": 11.700780391693115,
+        "peak_allocated_gib": 11.83941650390625
+      },
+      {
+        "case": "three-view",
+        "iteration": 1,
+        "shape": [
+          30,
+          54
+        ],
+        "finite": true,
+        "encode_ms": 2043.463438000117,
+        "head_ms": 1454.754094000009,
+        "total_ms": 3498.217532000126,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      }
+    ],
+    "load_seconds": 27.33372824800017,
+    "loaded_allocated_gib": 11.689068794250488,
+    "status": "passed"
+  },
+  "server_health": {
+    "protocol": "unifolm-g1-wbt-v1",
+    "unnorm_key": "UnifoLM_WBT",
+    "horizon": 30,
+    "fps": 30,
+    "image_size": [
+      336,
+      448
+    ],
+    "allow_missing_cameras": true,
+    "action_profile": "wbt",
+    "backend": "pytorch-bf16"
+  },
+  "server_benchmark": {
+    "input_type": "synthetic_zero_images_and_synthetic_state",
+    "transport": "loopback HTTP/msgpack",
+    "runs": [
+      {
+        "case": "head-only",
+        "iteration": 0,
+        "round_trip_ms": 3446.0112760000357,
+        "encode_ms": 2572.904089000076,
+        "head_ms": 863.8277949999065,
+        "total_ms": 3436.7318839999825,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 1,
+        "round_trip_ms": 1657.0506539999315,
+        "encode_ms": 935.2956559998802,
+        "head_ms": 716.376567999987,
+        "total_ms": 1651.6722239998671,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 2,
+        "round_trip_ms": 1831.010016999926,
+        "encode_ms": 920.4198780000752,
+        "head_ms": 905.4515860000265,
+        "total_ms": 1825.8714640001017,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 3,
+        "round_trip_ms": 1637.9885609999292,
+        "encode_ms": 916.9993379998687,
+        "head_ms": 715.8062850000988,
+        "total_ms": 1632.8056229999675,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 4,
+        "round_trip_ms": 1639.724876999935,
+        "encode_ms": 917.8616560000137,
+        "head_ms": 716.7339160000665,
+        "total_ms": 1634.5955720000802,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "head-only",
+        "iteration": 5,
+        "round_trip_ms": 1639.7771010001634,
+        "encode_ms": 918.5755869998502,
+        "head_ms": 716.1782580001272,
+        "total_ms": 1634.7538449999774,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924
+      },
+      {
+        "case": "three-view",
+        "iteration": 0,
+        "round_trip_ms": 3527.7409590000843,
+        "encode_ms": 2064.2961619998914,
+        "head_ms": 1454.2492460000176,
+        "total_ms": 3518.545407999909,
+        "tokens": 490,
+        "allocated_gib": 11.700780391693115,
+        "peak_allocated_gib": 11.83941650390625
+      },
+      {
+        "case": "three-view",
+        "iteration": 1,
+        "round_trip_ms": 3542.501495999886,
+        "encode_ms": 2080.665530000033,
+        "head_ms": 1454.5392640000046,
+        "total_ms": 3535.2047940000375,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      },
+      {
+        "case": "three-view",
+        "iteration": 2,
+        "round_trip_ms": 3502.8423399999156,
+        "encode_ms": 2039.2722649999087,
+        "head_ms": 1454.149335000011,
+        "total_ms": 3493.4215999999196,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      },
+      {
+        "case": "three-view",
+        "iteration": 3,
+        "round_trip_ms": 3490.9752159999243,
+        "encode_ms": 2025.8891500000118,
+        "head_ms": 1458.7644519999685,
+        "total_ms": 3484.6536019999803,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      },
+      {
+        "case": "three-view",
+        "iteration": 4,
+        "round_trip_ms": 3512.622145000023,
+        "encode_ms": 2049.64933500014,
+        "head_ms": 1455.7060919999003,
+        "total_ms": 3505.3554270000404,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      },
+      {
+        "case": "three-view",
+        "iteration": 5,
+        "round_trip_ms": 3499.068592000185,
+        "encode_ms": 2035.380411999995,
+        "head_ms": 1455.848203999949,
+        "total_ms": 3491.228615999944,
+        "tokens": 490,
+        "allocated_gib": 11.70116376876831,
+        "peak_allocated_gib": 11.839799880981445
+      }
+    ],
+    "summary": {
+      "head-only": {
+        "warm_samples": 5,
+        "inference_p50_ms": 1634.7538449999774,
+        "round_trip_p50_ms": 1639.7771010001634,
+        "round_trip_p95_ms": 1796.218144399927
+      },
+      "three-view": {
+        "warm_samples": 5,
+        "inference_p50_ms": 3493.4215999999196,
+        "round_trip_p50_ms": 3502.8423399999156,
+        "round_trip_p95_ms": 3536.5256257999135
+      }
+    }
+  },
+  "smoke_tegrastats": {
+    "peak_ram_mb": 15012,
+    "peak_swap_mb": 499,
+    "peak_tj_c": 49.375
+  },
+  "offline_tests": {
+    "passed": 52,
+    "skipped": 2
+  },
+  "pip_check_unchanged": true,
+  "preexisting_pip_check_findings": [
+    "nvidia-cudss-cu12 0.8.0.10 requires cuda-toolkit, which is not installed.",
+    "dex-retargeting 0.4.7 has requirement torch==2.3.0, but you have torch 2.11.0."
+  ]
+}
