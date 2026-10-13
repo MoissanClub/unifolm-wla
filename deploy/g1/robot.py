@@ -20,6 +20,19 @@ JOINTS = {i + start: f"{side}_{name}_joint" for side, start in (("left", 0), ("r
           for i, name in enumerate(LEG_NAMES)}
 JOINTS[12] = "waist_yaw_joint"
 JOINTS.update({idx: f"{side}_{name}_joint" for side in ARM_IDS for idx, name in zip(ARM_IDS[side], ARM_NAMES)})
+CAMERA_ACQUISITION_S = 0.2
+
+
+def _warmup_realsense(pipeline):
+    # The first color frame can take ~500 ms on PC2. Startup is separate from
+    # the observation freshness budget; none of these frames reaches the model.
+    deadline = time.monotonic() + 5.0
+    for _ in range(10):
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms <= 0:
+            raise RuntimeError("RealSense warm-up exceeded 5 seconds")
+        if not pipeline.wait_for_frames(remaining_ms).get_color_frame():
+            raise RuntimeError("No RealSense color frame during warm-up")
 
 
 def transform(value):
@@ -134,6 +147,7 @@ class Sensors:
             config = rs.config()
             config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
             self.pipeline.start(config)
+            _warmup_realsense(self.pipeline)
             for role, path in zip(ROLES[1:], (wrist_left, wrist_right)):
                 if path:
                     camera = cv2.VideoCapture(path)
@@ -164,6 +178,11 @@ class Sensors:
         if images is None:
             if self.pipeline is None:
                 raise ValueError("Supply fresh RGB images from the existing camera owner")
+            # Inference can take seconds. Discard frames queued during that gap
+            # before waiting for a new frame, keeping capture_start conservative.
+            while self.pipeline.poll_for_frames():
+                if time.monotonic() - capture_start > CAMERA_ACQUISITION_S:
+                    raise RuntimeError("Camera queue did not drain within 200 ms")
             frames = self.pipeline.wait_for_frames(1000)
             image = frames.get_color_frame()
             if not image:
@@ -175,8 +194,10 @@ class Sensors:
                     raise RuntimeError(f"Missing image: {role}")
                 images[role] = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         low, motors, hands = self.feedback()
-        if time.monotonic()-capture_start > 0.2:
-            raise RuntimeError("Camera acquisition exceeds 200 ms; fix buffering/synchronization")
+        acquisition_s = time.monotonic() - capture_start
+        if acquisition_s > CAMERA_ACQUISITION_S:
+            raise RuntimeError(f"Camera acquisition exceeds 200 ms ({acquisition_s*1000:.0f} ms); "
+                               "fix buffering/synchronization")
         quat = np.asarray(low.imu_state.quaternion, dtype=float)[[1, 2, 3, 0]]  # SDK wxyz -> xyzw
         gravity = Rotation.from_quat(quat).inv().apply([0.0, 0.0, -1.0])
         state = {"waist_joint": np.array([motors[12], 0, 0], dtype=np.float32),

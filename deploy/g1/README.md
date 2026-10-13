@@ -113,6 +113,9 @@ Do not expose this unauthenticated research server directly to the Internet.
 
 The process needs sole access to the selected cameras. Inspect the running camera service and stop it
 when you are ready to switch ownership; this package does not stop services automatically.
+The RealSense warms up before observation capture (ten color frames, up to five seconds total).
+Each observation discards queued RealSense frames and waits for a new frame. Startup delay therefore
+does not consume the 200 ms capture budget; a slow live capture still fails that freshness check.
 Make a calibration copy:
 
 ```bash
