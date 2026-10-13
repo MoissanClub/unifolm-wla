@@ -12,7 +12,7 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--observation", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--iterations", type=int, required=True, help="Number of warm measurements")
     parser.add_argument("--engine")
     parser.add_argument("--save-probe", action="store_true")
     parser.add_argument("--profile", choices=("wbt", "stationary_arms"), default="wbt")

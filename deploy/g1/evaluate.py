@@ -23,12 +23,12 @@ def main():
     parser.add_argument("--unnorm-key", default="UnifoLM_WBT")
     parser.add_argument("--task", type=int, default=0)
     parser.add_argument("--episode", type=int, default=0)
-    parser.add_argument("--stride", type=int, default=10)
-    parser.add_argument("--max-frames", type=int, default=300)
+    parser.add_argument("--stride", type=int, default=1)
+    parser.add_argument("--max-frames", type=int, help="Optional frame count; default evaluates the complete episode")
     parser.add_argument("--out", type=Path, default=Path("results/g1-offline"))
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    if args.stride < 1 or args.max_frames < 1:
+    if args.stride < 1 or (args.max_frames is not None and args.max_frames < 1):
         parser.error("Positive stride and frame count required")
     from .inference import Policy
     from unifolm_wla.dataloader.multi_source_dataset.config import load_config
@@ -51,7 +51,8 @@ def main():
             if not np.allclose(actual, expected, atol=1e-5):
                 raise ValueError(f"Dataset/checkpoint {kind}.{field} differs; reconcile normalization first")
     task_offset, start, end = _episode_frame_range(source, args.task, args.episode)
-    end = min(end, start+args.max_frames)
+    if args.max_frames is not None:
+        end = min(end, start+args.max_frames)
     scale = np.asarray(stats["action"]["scale"])
     offset = np.asarray(stats["action"]["offset"])
     args.out.mkdir(parents=True, exist_ok=False)

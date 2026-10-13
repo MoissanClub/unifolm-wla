@@ -1,0 +1,183 @@
+"""Arm/hand scheduling and service ownership with an entirely fake Unitree SDK."""
+import copy
+import sys
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from deploy.g1 import arms
+from deploy.g1.robot import ARM_IDS
+
+
+@pytest.fixture
+def sdk(monkeypatch):
+    state = SimpleNamespace(publishers={}, status=0, switches=[], fsm=500)
+
+    class Publisher:
+        def __init__(self, topic, message_type):
+            self.messages = []
+            self.closed = False
+            state.publishers[topic] = self
+
+        def Init(self):
+            pass
+
+        def Write(self, message):
+            self.messages.append(copy.deepcopy(message))
+            return True
+
+        def Close(self):
+            self.closed = True
+
+    class Loco:
+        def Init(self):
+            pass
+
+        def GetFsmId(self):
+            return 0, state.fsm
+
+    class Services:
+        def Init(self):
+            pass
+
+        def ServiceList(self):
+            return 0, [SimpleNamespace(name=arms.ARM_SERVICE, status=state.status)]
+
+        def ServiceSwitch(self, name, enabled):
+            state.switches.append((name, enabled))
+            state.status = 0 if enabled else 1
+            return 0
+
+    def lowcmd():
+        return SimpleNamespace(motor_cmd=[SimpleNamespace(q=0, dq=0, tau=0, kp=0, kd=0)
+                                          for _ in range(35)])
+
+    modules = {
+        "unitree_sdk2py.core.channel": SimpleNamespace(ChannelPublisher=Publisher),
+        "unitree_sdk2py.g1.loco.g1_loco_client": SimpleNamespace(LocoClient=Loco),
+        "unitree_sdk2py.go2.robot_state.robot_state_client": SimpleNamespace(RobotStateClient=Services),
+        "unitree_sdk2py.idl.default": SimpleNamespace(
+            unitree_hg_msg_dds__LowCmd_=lowcmd, unitree_go_msg_dds__MotorCmd_=SimpleNamespace),
+        "unitree_sdk2py.idl.unitree_hg.msg.dds_": SimpleNamespace(LowCmd_=SimpleNamespace),
+        "unitree_sdk2py.idl.unitree_go.msg.dds_": SimpleNamespace(MotorCmds_=SimpleNamespace),
+        "unitree_sdk2py.utils.crc": SimpleNamespace(CRC=lambda: SimpleNamespace(Crc=lambda msg: 0)),
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    for name in ("DISCOVERY_S", "RAMP_IN_S", "RAMP_OUT_S"):
+        monkeypatch.setattr(arms, name, 0.0)
+    return state
+
+
+@pytest.fixture
+def sensors():
+    motors = np.zeros(35)
+    motors[list(ARM_IDS["right"])] = [0.1, 0.2, 0.3, 0.4, 0.5]
+    motors[12] = 0.2
+    return SimpleNamespace(feedback=lambda: (SimpleNamespace(mode_machine=4), motors.copy(), {}))
+
+
+def test_constructor_and_unstarted_close_do_not_touch_robot(sdk, sensors):
+    session = arms.ArmSession(sensors)
+    session.close()
+    session.close()
+    assert not sdk.publishers
+    assert not sdk.switches
+
+
+@pytest.mark.parametrize("initial_status", [0, 1])
+def test_service_ownership_restores_exact_prior_state(sdk, sensors, initial_status):
+    sdk.status = initial_status
+    session = arms.ArmSession(sensors)
+    session.start()
+    assert sdk.status == 1
+    session.close()
+    assert sdk.status == initial_status
+    assert sdk.switches == ([(arms.ARM_SERVICE, False), (arms.ARM_SERVICE, True)]
+                            if initial_status == 0 else [])
+    assert all(p.closed for p in sdk.publishers.values())
+    assert not sdk.publishers["rt/brainco/left/cmd"].messages
+    assert not sdk.publishers["rt/brainco/right/cmd"].messages
+    assert sdk.publishers["rt/arm_sdk"].messages[-1].motor_cmd[29].q == 0.0
+
+
+def test_nonstanding_mode_never_takes_authority(sdk, sensors):
+    sdk.fsm = 0
+    session = arms.ArmSession(sensors)
+    with pytest.raises(RuntimeError, match="FSM 500"):
+        session.start()
+    session.close()
+    assert not sdk.publishers
+    assert not sdk.switches
+
+
+@pytest.mark.parametrize("failed_topic", ["rt/arm_sdk", "rt/brainco/left/cmd"])
+def test_cleanup_failure_still_restores_service_and_closes_other_publishers(sdk, sensors, failed_topic):
+    session = arms.ArmSession(sensors)
+    session.start()
+
+    def fail():
+        raise RuntimeError("DDS close failure")
+
+    sdk.publishers[failed_topic].Close = fail
+    with pytest.raises(RuntimeError, match="DDS close failure"):
+        session.close()
+    assert sdk.status == 0
+    assert sdk.switches[-1] == (arms.ARM_SERVICE, True)
+    assert all(p.closed for topic, p in sdk.publishers.items() if topic != failed_topic)
+    assert not session.thread.is_alive()
+
+
+def test_interpolation_starts_measured_and_uses_all_frames():
+    points = np.array([[0.0] * 5, [0.4] * 5, [0.8] * 5])
+    np.testing.assert_allclose(arms.interpolate(points, 0, 30), points[0])
+    np.testing.assert_allclose(arms.interpolate(points, 1 / 60, 30), [0.2] * 5)
+    np.testing.assert_allclose(arms.interpolate(points, 1 / 30, 30), points[1])
+    np.testing.assert_allclose(arms.interpolate(points, 2 / 30, 30), points[2])
+    np.testing.assert_allclose(arms.interpolate(points, 10, 30), points[2])
+
+
+def test_left_plan_holds_right_waist_and_retains_grasp_on_close(sdk, sensors):
+    session = arms.ArmSession(sensors)
+    session.start()
+    plan = {"side": "left", "fps": 30, "joints": np.array([[0.2] * 5, [0.4] * 5]),
+            "hands": np.array([[0.1] * 6, [0.6] * 6])}
+    try:
+        session.play(plan)
+        np.testing.assert_allclose(session.command["left"], plan["joints"][-1])
+        assert session.trajectory is None
+    finally:
+        session.close()
+    hand_messages = sdk.publishers["rt/brainco/left/cmd"].messages
+    assert [[c.q for c in m.cmds] for m in hand_messages] == plan["hands"].tolist()
+    assert not sdk.publishers["rt/brainco/right/cmd"].messages
+    _, motors, _ = sensors.feedback()
+    for message in sdk.publishers["rt/arm_sdk"].messages:
+        assert message.motor_cmd[12].q == motors[12]
+        assert [message.motor_cmd[i].q for i in ARM_IDS["right"]] == motors[list(ARM_IDS["right"])].tolist()
+    last = sdk.publishers["rt/arm_sdk"].messages[-1]
+    assert [last.motor_cmd[i].q for i in ARM_IDS["left"]] == plan["joints"][-1].tolist()
+
+
+def test_invalid_plan_never_sends_hand_commands(sdk, sensors):
+    session = arms.ArmSession(sensors)
+    session.start()
+    try:
+        with pytest.raises(ValueError, match="schema"):
+            session.play({"joints": np.zeros((3, 5)), "hands": np.zeros((2, 6))})
+    finally:
+        session.close()
+    assert not sdk.publishers["rt/brainco/left/cmd"].messages
+
+
+def test_changed_fsm_stops_next_chunk_without_hand_commands(sdk, sensors):
+    session = arms.ArmSession(sensors)
+    session.start()
+    sdk.fsm = 1
+    try:
+        with pytest.raises(RuntimeError, match="FSM 500"):
+            session.play({"joints": np.zeros((2, 5)), "hands": np.zeros((2, 6))})
+    finally:
+        session.close()
+    assert not sdk.publishers["rt/brainco/left/cmd"].messages

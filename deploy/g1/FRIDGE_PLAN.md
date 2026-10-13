@@ -72,15 +72,15 @@ as separate conditions. Record whether failures are input/domain mismatch, unrea
 grasp/contact, or task logic; these call for different fixes.
 
 Measure warm p50/p95 inference and full sensor-to-action latency, peak shared memory, thermals, packet
-loss, EEF position/orientation error, finger error, stale-chunk rejection and IK rejection. A 30-step
+loss, EEF position/orientation error, finger error, observation age and IK residuals. A 30-step
 prediction at 30 Hz is a one-second horizon; it does not mean the model is called at 30 Hz. Choose the
 execution prefix from measured latency and task dynamics. Long open-loop chunks during door contact
-are especially unsuitable. The included arm gate uses a conservative 0.45 s observation age and skips
-expired steps; changing that limit is not a way to make a slow system real-time.
+are especially unsuitable. The experimental arm/hand executor holds during inference and then starts
+the complete chunk at index zero. Its former 0.45 s age gate and magnitude cutoffs have been removed;
+this changes execution scheduling, not inference throughput.
 
-The first physical learned evaluation should be small movements in clear space using `client.py
---execute-free-space-arms`. Its results are not the original model's WBC performance. It deliberately
-has no contact manipulation mode.
+Preview using `client.py --plan` before explicit `--execute` with measured calibration. The retargeted
+arm/hand controller is not the original model's WBC controller and has no contact or grasp-success model.
 
 ## Stage 3: Collect task-specific demonstrations
 
@@ -146,7 +146,7 @@ new contact executor beneath it. The executor must:
    and the built-in loco simultaneously command the legs. A five-joint arm adaptation is not a 29-DoF WBC.
 
 These contact-control/verification integrations are **remaining work**, not implemented by renaming
-the free-space arm executor. Their thresholds depend on your measured fridge and sensor hardware.
+the stationary arm/hand executor. Their thresholds depend on your measured fridge and sensor hardware.
 The dataset, adaptation and evaluation code delivered here supports building them without pretending
 that a missing robot controller is a checkpoint format issue.
 

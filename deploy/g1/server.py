@@ -8,9 +8,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from model_server.tools.msgpack_numpy import packb, unpackb
 from .contract import IMAGE_SIZE, PROTOCOL, WBTAdapter
 
-MAX_MESSAGE = 24 * 1024 * 1024
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
@@ -27,10 +24,6 @@ def main():
     adapter = WBTAdapter(policy.model.norm_stats, args.unnorm_key, args.allow_missing_cameras, args.profile)
 
     class Handler(BaseHTTPRequestHandler):
-        def setup(self):
-            super().setup()
-            self.connection.settimeout(10)
-
         def reply(self, code, data):
             body = packb(data)
             self.send_response(code)
@@ -55,9 +48,12 @@ def main():
                 return
             try:
                 size = int(self.headers.get("Content-Length", "0"))
-                if not 0 < size <= MAX_MESSAGE:
+                if size <= 0:
                     raise ValueError("Invalid message length")
-                obs = unpackb(self.rfile.read(size))
+                body = self.rfile.read(size)
+                if len(body) != size:
+                    raise ValueError("Incomplete request body")
+                obs = unpackb(body)
                 example = adapter.example(obs)
                 pred, metrics = policy.predict(example)
                 result = adapter.decode(pred, obs)

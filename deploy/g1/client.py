@@ -1,7 +1,8 @@
-"""Record observations, evaluate in shadow mode, or explicitly test free-space arms."""
+"""Record observations, predict, preview trajectories, or explicitly execute one arm."""
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import time
 import urllib.error
@@ -14,15 +15,15 @@ from model_server.tools.msgpack_numpy import packb, unpackb
 from .contract import PROTOCOL
 
 
-def request(url, observation=None, timeout=30):
+def request(url, observation=None, timeout=None):
     endpoint = "/predict" if observation is not None else "/health"
     body = packb(observation) if observation is not None else None
     req = urllib.request.Request(url.rstrip("/")+endpoint, body, {"Content-Type": "application/msgpack"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            result = unpackb(response.read(24*1024*1024))
+            result = unpackb(response.read())
     except urllib.error.HTTPError as exc:
-        details = unpackb(exc.read(24*1024*1024))
+        details = unpackb(exc.read())
         raise RuntimeError(f"Policy server: {details.get('error', exc.code)}") from exc
     if result.get("protocol") != PROTOCOL:
         raise ValueError("Wrong inference server protocol")
@@ -38,27 +39,27 @@ def main():
     parser.add_argument("--calibration", default="deploy/g1/calibration.example.json")
     parser.add_argument("--wrist-left", help="V4L2 device path")
     parser.add_argument("--wrist-right", help="V4L2 device path")
-    parser.add_argument("--steps", type=int, default=10)
+    parser.add_argument("--steps", type=int, help="Number of observations; omitted runs until Ctrl-C")
     parser.add_argument("--out", default="results/g1")
     parser.add_argument("--record-only", action="store_true")
     parser.add_argument("--replay", type=Path, help="A previously recorded observation .msgpack; never executes")
-    parser.add_argument("--execute-free-space-arms", action="store_true")
+    parser.add_argument("--plan", action="store_true", help="Save arm/hand trajectory and IK errors without motion")
+    parser.add_argument("--execute", action="store_true", help="Execute planned arm/hand chunks using the supplied calibration")
+    parser.add_argument("--side", choices=("left", "right"), default="left")
     args = parser.parse_args()
-    if args.steps < 1:
+    if args.steps is not None and args.steps < 1:
         parser.error("--steps must be positive")
-    execute = args.execute_free_space_arms
+    execute = args.execute
     if execute and (args.record_only or args.replay):
         parser.error("Execution cannot be combined with recording/replay")
     calibration = json.loads(Path(args.calibration).read_text())
-    if execute and calibration.get("verified") is not True:
-        parser.error("Execution requires measured, verified wrist frame calibration")
     health = None if args.record_only else request(args.server)
     run = Path(args.out) / time.strftime("%Y%m%d-%H%M%S")
     run.mkdir(parents=True, exist_ok=False)
     (run / "run.json").write_text(json.dumps({
         "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
         "calibration": calibration, "server": health,
-        "mode": "free-space-arm-retargeting" if execute else "record" if args.record_only else "shadow",
+        "mode": "arm-hand-execution" if execute else "record" if args.record_only else "inference",
     }, indent=2))
     sensors = arms = None
     latency = []
@@ -67,41 +68,39 @@ def main():
             from .robot import Kinematics23, Sensors
             kin = Kinematics23(args.urdf, calibration)
             sensors = Sensors(args.interface, kin, args.wrist_left, args.wrist_right)
-        if execute:
-            from .arms import ArmSession
-            # Operator must have disabled competing rt/arm_sdk publishers before this command.
-            arms = ArmSession(sensors)
         with (run / "metrics.jsonl").open("w") as log:
-            for step in range(args.steps):
+            for step in itertools.count() if args.steps is None else range(args.steps):
                 obs = unpackb(args.replay.read_bytes()) if args.replay else sensors.observe(args.instruction)
                 obs["instruction"] = args.instruction
                 (run / f"{step:05d}.observation.msgpack").write_bytes(packb(obs))
                 if args.record_only:
                     continue
                 start = time.monotonic()
-                timeout = 30
-                if arms:
-                    timeout = calibration["limits"]["max_observation_age_s"] - (start-obs["captured_monotonic"])
-                    if timeout <= 0:
-                        raise RuntimeError("Observation already stale before policy request")
-                reply = request(args.server, obs, timeout=timeout)
+                reply = request(args.server, obs)
                 elapsed = time.monotonic()-start
                 latency.append(elapsed*1000)
                 (run / f"{step:05d}.prediction.msgpack").write_bytes(packb(reply))
                 metrics = {"step": step, "roundtrip_ms": elapsed*1000, **reply["metrics"]}
-                if sensors:
-                    from .guard import choose_target
-                    try:
-                        _, measured, _ = sensors.feedback()
-                        targets, index = choose_target(reply, obs, measured, kin, calibration["limits"])
-                        metrics.update(guard="accepted", action_index=index)
-                        if arms:
-                            arms.move(targets, calibration["limits"]["move_duration_s"])
-                    except (ValueError, RuntimeError) as exc:
-                        metrics.update(guard="rejected", reason=str(exc))
-                        if arms:
-                            log.write(json.dumps(metrics)+"\n")
-                            raise
+                metrics.update(mode="inference", executed=False,
+                               observation_age_s=time.monotonic()-obs["captured_monotonic"]
+                               if sensors else None, capture_ms=obs.get("capture_ms"))
+                if args.plan or execute:
+                    from .trajectory import plan_chunk
+                    if sensors is None:
+                        from .robot import Kinematics23
+                        kin = Kinematics23(args.urdf, calibration)
+                    plan = plan_chunk(reply, obs, kin, side=args.side, fps=health["fps"])
+                    (run / f"{step:05d}.plan.msgpack").write_bytes(packb(plan))
+                    metrics["plan"] = {"side": args.side, "frames": len(plan["joints"]),
+                                       "position_error_max_m": float(np.max(plan["errors"]["position_error_m"])),
+                                       "rotation_error_max_rad": float(np.max(plan["errors"]["rotation_error_rad"]))}
+                    if execute:
+                        if arms is None:
+                            from .arms import ArmSession
+                            arms = ArmSession(sensors, side=args.side, fps=health["fps"])
+                            arms.start()
+                        arms.play(plan)
+                        metrics.update(mode="arm-hand-execution", executed=True)
                 print(json.dumps(metrics), flush=True)
                 log.write(json.dumps(metrics)+"\n")
                 log.flush()

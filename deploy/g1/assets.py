@@ -5,7 +5,6 @@ import argparse
 import json
 import math
 import platform
-import shutil
 import struct
 from pathlib import Path
 
@@ -15,10 +14,15 @@ CODE_REVISION = "0a1aa87be8f775c7883fcd27216e3666ac18a8c5"
 
 
 def inspect_checkpoint(path):
-    with Path(path).open("rb") as stream:
-        length = struct.unpack("<Q", stream.read(8))[0]
-        if length > 10*1024*1024:
-            raise ValueError("Invalid safetensors header size")
+    path = Path(path)
+    with path.open("rb") as stream:
+        size = path.stat().st_size
+        prefix = stream.read(8)
+        if len(prefix) != 8:
+            raise ValueError("Truncated safetensors header length")
+        length = struct.unpack("<Q", prefix)[0]
+        if length > size - 8:
+            raise ValueError("Safetensors header extends beyond the file")
         header = json.loads(stream.read(length))
     result = {}
     for key, spec in header.items():
@@ -41,8 +45,6 @@ def main():
     if args.command == "fetch":
         from huggingface_hub import snapshot_download
         args.model_dir.mkdir(parents=True, exist_ok=True)
-        if not args.metadata_only and shutil.disk_usage(args.model_dir).free < 15*2**30:
-            raise RuntimeError("Need at least 15 GiB free for the base checkpoint")
         snapshot_download(MODEL_ID, revision=MODEL_REVISION, local_dir=args.model_dir,
                           allow_patterns=["config.yaml", "dataset_statistics.json", "tokenizer/*"]
                           if args.metadata_only else None)

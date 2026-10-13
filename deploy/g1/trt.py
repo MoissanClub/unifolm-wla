@@ -101,8 +101,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--tokens", default=1024, type=int)
+    parser.add_argument("--tokens", required=True, type=int,
+                        help="Context capacity for this fixed-shape engine; choose from measured prompts")
     args = parser.parse_args()
+    if args.tokens < 1:
+        parser.error("Token capacity must be positive")
     import torch
     from accelerate import init_empty_weights
     from accelerate.utils import set_module_tensor_to_device

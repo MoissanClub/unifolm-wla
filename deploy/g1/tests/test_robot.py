@@ -26,8 +26,11 @@ def test_actual_23dof_fk_ik_roundtrip(kin, side):
 def test_unreachable_target(kin):
     target = np.eye(4)
     target[:3, 3] = [3, 0, 3]
-    with pytest.raises(ValueError, match="unreachable"):
-        kin.ik(np.zeros(35), "left", target)
+    q, error = kin.fit(np.zeros(35), "left", target)
+    assert error["position_error_m"] > 1
+    indices = [kin.indices[i] for i in ARM_IDS["left"]]
+    assert np.all(q >= kin.model.lowerPositionLimit[indices])
+    assert np.all(q <= kin.model.upperPositionLimit[indices])
 
 
 def test_calibration_rejects_reflection():

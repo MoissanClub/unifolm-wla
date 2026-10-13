@@ -1,0 +1,109 @@
+{
+  "rows": 22585,
+  "episodes": 35,
+  "checks": {
+    "observation.state_fig6d_minus_1_minus_raw_maxabs": 2.9802322387695312e-08,
+    "observation.state_left_torso_composition_position_m": {
+      "median": 2.290960139010457e-08,
+      "p95": 4.877651310719032e-08,
+      "max": 7.416142248314846e-08
+    },
+    "observation.state_left_torso_composition_rotation_rad": {
+      "median": 1.899076559248359e-08,
+      "p95": 5.7621249964308854e-08,
+      "max": 1.2108230866967336e-07
+    },
+    "observation.state_right_torso_composition_position_m": {
+      "median": 2.438162369410186e-08,
+      "p95": 5.3723327349725325e-08,
+      "max": 9.890311229467197e-08
+    },
+    "observation.state_right_torso_composition_rotation_rad": {
+      "median": 2.611369811158743e-08,
+      "p95": 8.329299252276344e-08,
+      "max": 2.4197651042744193e-07
+    },
+    "action_fig6d_minus_1_minus_raw_maxabs": 2.9802322387695312e-08,
+    "action_left_torso_composition_position_m": {
+      "median": 2.3142322531395344e-08,
+      "p95": 5.0021919580814793e-08,
+      "max": 8.814729396960878e-08
+    },
+    "action_left_torso_composition_rotation_rad": {
+      "median": 2.17152209966665e-08,
+      "p95": 6.174911441646589e-08,
+      "max": 1.2192756535839043e-07
+    },
+    "action_right_torso_composition_position_m": {
+      "median": 2.708766265207294e-08,
+      "p95": 6.457087717505681e-08,
+      "max": 1.0351461367609412e-07
+    },
+    "action_right_torso_composition_rotation_rad": {
+      "median": 2.8711182257785984e-08,
+      "p95": 8.372784544527154e-08,
+      "max": 2.3719308626667018e-07
+    },
+    "gravity_matches_base_pose": {
+      "median": 1.501005171752545e-08,
+      "p95": 2.833973248624891e-08,
+      "max": 3.1712437775798763e-08
+    },
+    "base_rot_last3_absmax": 14.841169357299805,
+    "left_tool_offset_and_yaw_origin_difference_m": [
+      0.10500000183443585,
+      -5.674369932262557e-10,
+      8.759301534239093e-10,
+      0.004999998181683278,
+      5.322745482296133e-10,
+      8.759301534154527e-10
+    ],
+    "left_two_offset_fit_residual_m": {
+      "median": 1.9713668572814832e-08,
+      "p95": 4.6475643726135016e-08,
+      "max": 5.8714009005987324e-08
+    },
+    "right_tool_offset_and_yaw_origin_difference_m": [
+      0.10499999805233398,
+      -2.101614925489881e-09,
+      1.1868090035557414e-09,
+      0.005000002198103057,
+      1.8100058787698431e-09,
+      1.1868090035575297e-09
+    ],
+    "right_two_offset_fit_residual_m": {
+      "median": 2.12717827299762e-08,
+      "p95": 5.178881041619194e-08,
+      "max": 8.681237819182214e-08
+    }
+  },
+  "dataset": "unitreerobotics/G1_WBT_Brainco_Put_Drinks_Into_Fridge",
+  "revision": "7c6a9f562d599a84186ae866198a2e06ee6d9ad5",
+  "file": "data/chunk-000/file-001.parquet",
+  "sha256": "150d16aa90237e9b067cd1dbd06ad38c4c12aafb2c25143dea0e240d96f47be0",
+  "source_url": "https://huggingface.co/datasets/unitreerobotics/G1_WBT_Brainco_Put_Drinks_Into_Fridge/blob/7c6a9f562d599a84186ae866198a2e06ee6d9ad5/meta/info.json",
+  "findings": {
+    "hands": "policy_fig6d = 1 - native_DDS_q; unchanged left/right and finger order in both observations/actions",
+    "finger_order": [
+      "thumb_oc",
+      "thumb_lat",
+      "index",
+      "middle",
+      "ring",
+      "little"
+    ],
+    "ee_reference": "ee_pose_gripper_base includes the full reference_T_pelvis given by state_base_pose/action_base_pose. It is not pelvis-relative.",
+    "pose_representation": "end-effector and torso: xyz + extrinsic xyz Euler radians; base: xyz + xyzw quaternion",
+    "arm_joint_order": "Numeric dataset values follow shoulder_pitch,shoulder_roll,shoulder_yaw,elbow,wrist_roll,wrist_pitch,wrist_yaw. The metadata wrist names list yaw,roll,pitch instead; those names are inconsistent with recovered FK.",
+    "29dof_tool_frame": "The fixed tool offset is +0.105 m along wrist_yaw x, identity rotation, after correcting the local XR29 URDF wrist_yaw joint origin x from0.046 to0.051 m. A fixed offset alone with the unmodified XR29 URDF is not exact.",
+    "23dof_limitation": "This numerical fit does not measure the installed 23DoF BrainCo mount. Do not mark that physical calibration verified.",
+    "gravity": "state_base_rot[:3] = R(state_base_pose.quaternion).T @ [0,0,-1]",
+    "angular_velocity": "state_base_rot[3:] = log(R_previous.T @ R_current) * 30 for consecutive within-episode frames (max absolute error4.3813438566076e-7rad/s). It is not normalized in the raw dataset."
+  },
+  "fk_recovery_samples": 1000,
+  "joint_order_recovery_samples": 500,
+  "gravity_validation": "22585 rows",
+  "angular_velocity_validation": "consecutive within-episode rows; new episode rows excluded",
+  "angular_velocity_max_abs_error_rad_s": 4.3813438566076e-07,
+  "artifact_date": "2026-10-13"
+}

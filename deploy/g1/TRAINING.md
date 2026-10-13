@@ -8,8 +8,9 @@ training and deployment. This guide starts with **stationary bimanual manipulati
 
 `DemoWriter.add()` accepts a measured observation plus the commands being issued by the teleoperator.
 It computes command EEF poses with the actual 23-DoF URDF, stores JPEGs and timestamped numeric records,
-and rejects an overflowing recording queue. The exporter rejects timing gaps and uses a 30 Hz grid with
-a maximum 20 ms nearest-frame error. Record phase success explicitly.
+and reports the recording backlog. The exporter uses a 30 Hz grid and writes timestamp-gap,
+resampling-error and repeated-frame diagnostics without rejecting episodes on fixed timing cutoffs.
+Record phase success explicitly; select `--successful-only` when that filtering is wanted.
 
 To integrate into the existing teleoperation process, put `unifolm-wla` on that process's `PYTHONPATH`.
 After its SDK initialization and before recording, construct these objects:
@@ -105,9 +106,9 @@ bash deploy/g1/finetune.sh \
   playground/g1-train.yaml playground/Checkpoints/g1-fridge-lora lora
 ```
 
-Use `full` instead of `lora` for full action-head tuning. The wrapper defaults to a 200-step pilot with
-20 warmup steps. After validating that pilot, set, for example, `MAX_TRAIN_STEPS=20000 WARMUP_STEPS=200`
-before the command, using a new run directory; choose the actual budget from validation. The wrapper
+Use `full` instead of `lora` for full action-head tuning. The wrapper uses upstream training defaults
+(currently 20,000 training steps and 200 warmup steps). Set `MAX_TRAIN_STEPS` and `WARMUP_STEPS`
+before the command to choose a budget explicitly, using a new run directory. The wrapper
 references the existing `ds_config.yaml` rather than the missing file in upstream's launchers. It refuses
 to reuse an existing run directory. No cloud account, paid instance or job is launched by this delivery.
 
@@ -135,5 +136,5 @@ checkpoint; no such artifacts were available in this session.
 
 Deploy the merged stationary policy with `server --profile stationary_arms`, retaining the matching
 camera setup. Before contact execution, implement and validate the contact controller and phase-completion
-checks described in [FRIDGE_PLAN.md](FRIDGE_PLAN.md). The included free-space arm test does not gain
+checks described in [FRIDGE_PLAN.md](FRIDGE_PLAN.md). The included stationary arm/hand executor does not gain
 contact-control or safe handover capabilities merely because its weights were fine-tuned.

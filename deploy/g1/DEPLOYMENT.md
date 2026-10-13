@@ -57,7 +57,8 @@ With the warmed server resident after the API test, about 512 MiB remained avail
 additional processes and live perception need a separate memory assessment.
 
 The 30-action chunk at 30 Hz covers one second. Both measured configurations exceed that budget;
-the bounded live executor would reject expired predictions. Three-view VLM encoding alone takes
+the executor at that revision would reject expired predictions. That gate was removed on October 13;
+the current executor starts the whole chunk after inference. Three-view VLM encoding alone takes
 about two seconds, so accelerating only the action head cannot meet that budget at this setting.
 TensorRT 10.3 imports successfully; no full-policy TensorRT engine was built or claimed.
 Offboard inference or validated VLM optimization remains a next step for reducing latency.

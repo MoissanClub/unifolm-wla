@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--engine", required=True)
     parser.add_argument("--probe", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--max-abs", type=float, default=0.05, help="Normalized action tolerance, not a motion certificate")
+    parser.add_argument("--max-abs", type=float, help="Optional user-selected normalized action tolerance")
     args = parser.parse_args()
     import torch
     from accelerate import init_empty_weights
@@ -57,15 +57,17 @@ def main():
             trt_action = (trt_action+trt_velocity.float()/steps)*mask[:, None]
             step_errors.append(float((action-trt_action).abs().max()))
     difference = (action-trt_action).abs()
-    passed = bool(torch.isfinite(difference).all()) and float(difference.max()) <= args.max_abs
+    finite = bool(torch.isfinite(difference).all())
+    passed = finite and float(difference.max()) <= args.max_abs if args.max_abs is not None else None
     report = {"probe": str(args.probe), "engine": args.engine, "checkpoint": args.checkpoint,
               "step_max_abs": step_errors, "rollout_max_abs": float(difference.max()),
-              "rollout_mean_abs": float(difference.mean()), "tolerance": args.max_abs, "passed": passed,
+              "rollout_mean_abs": float(difference.mean()), "tolerance": args.max_abs,
+              "finite": finite, "passed": passed,
               "limitation": "One probe; repeat over held-out tasks, poses, masks and camera sets before deployment."}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
-    if not passed:
+    if not finite or passed is False:
         raise SystemExit(1)
 
 

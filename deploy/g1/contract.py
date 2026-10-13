@@ -15,7 +15,7 @@ from unifolm_wla.dataloader.multi_source_dataset.se3_utils import (
     pose_to_se3_from_format,
 )
 
-PROTOCOL = "unifolm-g1-wbt-v1"
+PROTOCOL = "unifolm-g1-wbt-v2"
 IMAGE_SIZE = (336, 448)  # H,W; upstream unitree.yaml training resolution
 ROLES = ("head_left", "cam_wrist_left", "cam_wrist_right")
 STATE_WIDTHS = {
@@ -59,16 +59,10 @@ def validate_observation(obs, allow_missing_cameras=False):
     if not isinstance(obs.get("frame_id"), str):
         raise ValueError("frame_id must be a string")
     state = {key: array(obs["state"][key], (width,), key) for key, width in STATE_WIDTHS.items()}
-    for side in ("left", "right"):
-        hand = state[f"{side}_fig6d"]
-        if np.any((hand < -0.001) | (hand > 1.001)):
-            raise ValueError("BrainCo finger positions must be in [0, 1]")
-    if abs(np.linalg.norm(state["base_rot"][:3]) - 1) > 0.1:
-        raise ValueError("base_rot[:3] must be projected unit gravity, not position")
     if "base_pose" in obs:
         pose = array(obs["base_pose"], (7,), "base_pose xyz+xyzw")
-        if abs(np.linalg.norm(pose[3:]) - 1) > 0.01:
-            raise ValueError("Invalid base-pose quaternion")
+        if not np.linalg.norm(pose[3:]):
+            raise ValueError("A zero quaternion cannot represent a base pose")
     images = obs["images"]
     if set(images) - set(ROLES) or "head_left" not in images:
         raise ValueError(f"Expected image roles from {ROLES}, including head_left")
@@ -78,8 +72,8 @@ def validate_observation(obs, allow_missing_cameras=False):
         img = np.asarray(img)
         if img.dtype != np.uint8 or img.ndim != 3 or img.shape[2] != 3:
             raise ValueError(f"{role}: expected HxWx3 uint8 RGB")
-        if not (32 <= img.shape[0] <= 1080 and 32 <= img.shape[1] <= 1920):
-            raise ValueError(f"{role}: unsupported image resolution")
+        if not img.shape[0] or not img.shape[1]:
+            raise ValueError(f"{role}: empty image")
     return state
 
 
@@ -115,8 +109,8 @@ class WBTAdapter:
 
     def decode(self, normalized, obs):
         pred = np.asarray(normalized, dtype=np.float32)
-        if pred.ndim != 2 or pred.shape[1] != UNIFIED_DIM or not (1 <= len(pred) <= 120):
-            raise ValueError("Expected an action chunk [T,54], 1 <= T <= 120")
+        if pred.ndim != 2 or pred.shape[1] != UNIFIED_DIM or not len(pred):
+            raise ValueError("Expected a nonempty action chunk [T,54]")
         if not np.isfinite(pred).all():
             raise ValueError("Nonfinite model output")
         raw = pred * self.norm["action_scale"] + self.norm["action_offset"]

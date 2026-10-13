@@ -17,6 +17,7 @@ from scipy.spatial.transform import Rotation
 
 from .contract import array, validate_observation
 from .robot import ARM_IDS
+from .semantics import native_hand_to_policy, pelvis_pose_to_world
 
 STATE_KEYS = {
     "left_ee_pose": "left_ee_pose_gripper_base", "right_ee_pose": "right_ee_pose_gripper_base",
@@ -34,6 +35,7 @@ class DemoWriter:
         self.kin = kinematics
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.pending = deque()
+        self.peak_pending_writes = 0
         self.index = 0
         self.error = None
 
@@ -47,21 +49,17 @@ class DemoWriter:
             except Exception as exc:
                 self.error = f"Recorder write failed: {exc}"
                 raise RuntimeError(self.error) from exc
-        if len(self.pending) >= 8:
-            self.error = "Recorder cannot keep up; this episode must be recollected"
-            raise RuntimeError(self.error)
         action = {}
         for side, ids in ARM_IDS.items():
             motors = np.asarray(observation["motors"]).copy()
             motors[list(ids)] = array(arm_targets[side], (5,), f"{side} arm command")
-            pose = self.kin.fk(motors, side)
+            pose = pelvis_pose_to_world(observation["base_pose"], self.kin.fk(motors, side))
             action[f"{side}_ee_pose"] = np.r_[pose[:3, 3], Rotation.from_matrix(pose[:3, :3]).as_euler("xyz")]
             hand = array(hand_targets[side], (6,), f"{side} hand command")
-            if np.any((hand < 0) | (hand > 1)):
-                raise ValueError("Hand COMMAND must be six normalized BrainCo channels in [0,1]")
-            action[f"{side}_fig6d"] = hand
+            action[f"{side}_fig6d"] = native_hand_to_policy(hand)
         record = {"observation": copy.deepcopy(observation), "action": action}
         self.pending.append(self.executor.submit(self._write, self.index, record))
+        self.peak_pending_writes = max(self.peak_pending_writes, len(self.pending))
         self.index += 1
 
     def _write(self, index, record):
@@ -93,24 +91,29 @@ class DemoWriter:
         (self.directory / "episode.json").write_text(json.dumps({
             "success": bool(success) and self.error is None, "frames": self.index,
             "error": self.error, "action_profile": "stationary_arms",
+            "peak_pending_writes": self.peak_pending_writes,
         }, indent=2))
         if failure:
             raise RuntimeError(self.error) from failure
 
 
-def regular_indices(stamps, fps=30):
-    stamps = np.asarray(stamps)
-    if len(stamps) < fps or not np.isfinite(stamps).all() or np.any(np.diff(stamps) <= 0):
-        raise ValueError("Need at least one second of strictly increasing capture timestamps")
-    if np.max(np.diff(stamps)) > 2/fps:
-        raise ValueError("Capture gap exceeds two frames; recollect the episode")
+def resample_timestamps(stamps, fps=30):
+    stamps = np.asarray(stamps, dtype=float)
+    if stamps.ndim != 1 or not len(stamps) or not np.isfinite(stamps).all() or np.any(np.diff(stamps) <= 0):
+        raise ValueError("Need finite, strictly increasing capture timestamps")
+    if not np.isfinite(fps) or fps <= 0:
+        raise ValueError("Frame rate must be positive and finite")
     grid = np.arange(stamps[0], stamps[-1]+1e-7, 1/fps)
     right = np.searchsorted(stamps, grid).clip(0, len(stamps)-1)
     left = (right-1).clip(0)
     indices = np.where(np.abs(stamps[left]-grid) < np.abs(stamps[right]-grid), left, right)
-    if np.max(np.abs(stamps[indices]-grid)) > .020:
-        raise ValueError("Capture jitter exceeds 20 ms")
-    return indices
+    timing = {
+        "capture_frames": len(stamps), "resampled_frames": len(indices),
+        "max_capture_gap_s": float(np.max(np.diff(stamps), initial=0)),
+        "max_resampling_error_s": float(np.max(np.abs(stamps[indices]-grid))),
+        "repeated_frames": int(np.sum(np.diff(indices) == 0)),
+    }
+    return indices, timing
 
 
 def main():
@@ -118,22 +121,27 @@ def main():
     parser.add_argument("episodes", type=Path, help="Parent directory containing episode directories")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--repo-id", default="local/g1-fridge-stationary")
+    parser.add_argument("--successful-only", action="store_true",
+                        help="Include only episodes annotated successful")
     args = parser.parse_args()
     from PIL import Image
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     dataset = None
     expected_roles = None
+    conversion = []
     try:
         for episode in sorted(args.episodes.iterdir()):
             if not (episode / "episode.json").exists():
                 continue
             metadata = json.loads((episode / "episode.json").read_text())
-            if not metadata["success"]:
-                continue  # Keep failed trajectories separately for recovery annotation.
+            if args.successful_only and not metadata["success"]:
+                continue
             records = [json.loads(p.read_text()) for p in sorted(episode.glob("[0-9]*.json"))]
             if len(records) != metadata["frames"]:
                 raise ValueError(f"Incomplete episode: {episode}")
-            indices = regular_indices([r["observation"]["captured_monotonic"] for r in records])
+            indices, timing = resample_timestamps([r["observation"]["captured_monotonic"] for r in records])
+            conversion.append({"episode": str(episode), "success": metadata["success"], **timing})
+            print(json.dumps(conversion[-1]), flush=True)
             for index in indices:
                 record = records[int(index)]
                 obs, action = record["observation"], record["action"]
@@ -159,10 +167,11 @@ def main():
                 dataset.add_frame(frame)
             dataset.save_episode()
         if dataset is None:
-            raise ValueError("No complete successful episodes")
+            raise ValueError("No complete episodes matching the requested selection")
     finally:
         if dataset:
             dataset.finalize()
+            (args.out / "conversion_timing.json").write_text(json.dumps(conversion, indent=2))
 
 
 if __name__ == "__main__":

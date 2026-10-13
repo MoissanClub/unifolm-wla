@@ -2,11 +2,13 @@
 
 This is an **experimental evaluation package**, not a validated autonomous fridge-fetch deployment.
 It adds the missing BrainCo WBT data path, model serving, robot observation capture, offline evaluation,
-bounded stationary arm evaluation, demonstration conversion, fine-tuning launch/packaging, and an
+stationary arm/hand evaluation, demonstration conversion, fine-tuning launch/packaging, and an
 experimental TensorRT action-head path. No robot motion was performed while developing it.
 
 Start with [research and limitations](RESEARCH.md), [the complete fridge task plan](FRIDGE_PLAN.md),
 and [demonstration collection and training](TRAINING.md).
+The [restriction audit](LIMITS.md) lists the removed deployment cutoffs and remaining hardware/protocol
+requirements and control settings.
 
 The [October 5 onboard deployment report](DEPLOYMENT.md) records a verified download, preserved
 conda dependencies, and full BF16 inference on the 16 GB Orin NX without robot motion.
@@ -24,8 +26,9 @@ Warm synthetic inference took 1.63 s with one view and 3.49 s with three views a
 Weights alone occupy **11.60 GiB** at BF16. The Orin NX's memory is shared with the OS, cameras,
 CUDA workspaces and activations. The full model fits this 16 GB machine with little remaining memory;
 measured inference at 15 W exceeds the one-second action horizon. An 8 GB module cannot hold the
-full BF16 weights. The loader avoids constructing a second full copy of the model. If latency consumes its one-second action horizon,
-the arm executor rejects the result. A slow policy server remains useful for observation-only evaluation.
+full BF16 weights. The loader avoids constructing a second full copy of the model. The current
+experimental executor holds position during inference and then plays a complete chunk from index zero;
+this stop-and-act timing is different from a real-time whole-body controller.
 
 All commands below run from `unifolm-wla/`. `python` means the activated environment's interpreter.
 Use the existing conda environment. Installing the upstream project's full dependency set into PC2's
@@ -113,9 +116,8 @@ Do not expose this unauthenticated research server directly to the Internet.
 
 The process needs sole access to the selected cameras. Inspect the running camera service and stop it
 when you are ready to switch ownership; this package does not stop services automatically.
-The RealSense warms up before observation capture (ten color frames, up to five seconds total).
-Each observation discards queued RealSense frames and waits for a new frame. Startup delay therefore
-does not consume the 200 ms capture budget; a slow live capture still fails that freshness check.
+Capture duration, feedback age and inference latency are reported as measurements, without added
+time cutoffs. Each observation discards the queued RealSense frame and waits for another frame.
 Make a calibration copy:
 
 ```bash
@@ -137,16 +139,26 @@ python -m deploy.g1.client --steps 20 --calibration /tmp/g1-calibration.json \
 
 Add `--wrist-left /dev/v4l/by-id/LEFT_DEVICE --wrist-right /dev/v4l/by-id/RIGHT_DEVICE` for wrist cameras.
 Default DDS interface: `enP8p1s0`. Every run saves its calibration, server metadata, observations,
-predictions, timing and gate decisions beneath `results/g1/`. The sensor path only subscribes to
-`rt/lowstate` and the two BrainCo state topics. It does not build the existing fridge `Robot` object,
+predictions and timing beneath `results/g1/`. Omitting `--steps` runs until Ctrl-C.
+The sensor path polls `rt/lowstate` and subscribes to odometry and the two BrainCo state topics.
+It does not build the existing fridge `Robot` object,
 whose construction starts publishers and changes the arm service.
+
+The released WBT dataset uses `fig6d = 1 - native BrainCo q` and end-effector poses in a world
+reference frame, including the floating base. These relationships were verified numerically across
+22,585 released rows; see [the evidence](reports/2026-10-13-dataset-semantics.json).
+The live client creates a standing task reference with initial x/y/yaw zero and floor height from
+the firmware's `body_height`; raw odometry z has an arbitrary startup origin on this PC2.
+Old observations recorded before these corrections are not valid live-policy evaluation inputs.
+The corrected wire protocol is `unifolm-g1-wbt-v2`; restart both client and server after updating.
+The firmware height is an assumed floor reference, not an independently measured pelvis height.
 
 Replay a saved observation on the inference host:
 
 ```bash
 python -m deploy.g1.benchmark \
   --checkpoint playground/Pretrained_models/UnifoLM-WLA-1.0-Base/checkpoints/model.safetensors \
-  --observation /path/to/00000.observation.msgpack --out results/benchmark-01 --save-probe
+  --observation /path/to/00000.observation.msgpack --out results/benchmark-01 --iterations 10 --save-probe
 ```
 
 This separates cold/warm inference, VLM/head time, token count and CUDA allocation. On PC2 also record
@@ -170,7 +182,7 @@ python -m deploy.g1.prepare_data --data-root "$DATA_ROOT" --cache "$PWD/playgrou
   --out playground/g1-wbt.yaml
 python -m deploy.g1.evaluate \
   --checkpoint playground/Pretrained_models/UnifoLM-WLA-1.0-Base/checkpoints/model.safetensors \
-  --data-config playground/g1-wbt.yaml --episode 0 --max-frames 300 --out results/fridge-episode-00
+  --data-config playground/g1-wbt.yaml --episode 0 --out results/fridge-episode-00
 ```
 
 The generated config uses the upstream WBT schema and exact `UnifoLM_WBT` normalization key. The evaluator
@@ -179,27 +191,46 @@ rotation and finger errors plus normalized MAE and latency. Repeating with diffe
 more observations. Action agreement on likely pretraining data is a plumbing baseline, not evidence
 of held-out task success. Keep independently collected evaluation episodes out of training.
 
-## 5. Optional bounded arm evaluation
+## 5. Preview and explicit arm/hand execution
 
-Only after measuring the wrist transforms, validating FK against observed hand poses, and confirming
-clear space around both arms: set `verified` to true in **your measured calibration**, stop competing
-arm SDK publishers, put the robot in the standing main controller, and keep the operator at the remote.
+Preview the complete selected-arm trajectory without publishing commands:
 
 ```bash
-python -m deploy.g1.client --execute-free-space-arms --steps 5 \
+python -m deploy.g1.client --plan --side left --steps 1 \
   --calibration /path/to/measured-g1-calibration.json \
-  --instruction "move the left hand slightly forward"
+  --instruction "pick up the can with the left hand"
 ```
 
-This is a **retargeting test**, not reproduction of Unitree's WBC controller. The executor has finite
-iterations, stale feedback/action checks, Cartesian/joint step bounds, full orientation IK rejection,
-tracking/tilt checks and arm authority ramping. It skips expired action prefixes. It holds the waist;
-model leg/base targets are checked for stationarity and never commanded. Hands are not commanded by this
-free-space test. On exit, arm authority is ramped back to the standing controller.
+Plans contain all action frames, five-joint IK targets, native BrainCo targets, IK residuals and
+unexecuted whole-body outputs. There is no age-based prefix skipping or rejection based on fixed
+Cartesian/joint movement, base motion, hand separation or IK-error thresholds. The IK solver keeps
+the physical URDF joint ranges. A 5-DoF arm generally cannot realize every 6D pose; inspect its residuals.
 
-It has no full-body swept-volume collision model, force controller, door-contact supervisor or grasp
-verification. Do not use this mode to pull a fridge door, grasp a can, or hand an object to a person.
-The gate may reject most unadapted WBT predictions; record that rejection rate as an embodiment result.
+`--execute` explicitly enables the selected arm and hand using the supplied calibration. The former
+`verified` boolean gate has been removed; setting a JSON flag never established physical calibration.
+It requires FSM 500 and manages the competing built-in arm service. The robot holds position while
+inference runs, then starts the complete chunk at index zero. This supports slow stop-and-act evaluation;
+it does not reproduce Unitree's full-body WBT controller. The other arm and waist retain their initial
+targets; the standing controller retains leg and balance control. Exit releases arm authority and
+preserves hand closure.
+
+After the physical frame has been established, the explicit execution command is:
+
+```bash
+python -m deploy.g1.client --execute --side left \
+  --calibration /path/to/measured-g1-calibration.json \
+  --instruction "pick up the can with the left hand"
+```
+
+Omit `--steps` for continuous observation/prediction/playback until Ctrl-C. There is no automatic
+grasp-completion detector; a successful DDS write or completed chunk is not proof of a pickup.
+
+The installed 23-DoF BrainCo mounting transform is still unmeasured. The example remains an identity
+placeholder, and the 29-DoF dataset geometry is not proof of this robot's physical mounting.
+`calibration.brainco23.reference.json` records BrainCo's published 20 cm teleoperation convention as an
+unverified reference. Neither that file nor an identity transform establishes the WLA grasp frame.
+No hardware can-pickup success has been established. The executor has no object-contact or
+collision model and does not claim task success when a chunk finishes.
 
 For a model specifically fine-tuned with the stationary-arm action mask, start the server with
 `--profile stationary_arms`; match the training camera configuration too. Do not present this as the
@@ -237,8 +268,9 @@ python -m deploy.g1.trt_parity \
   --out results/trt/parity-01.json
 ```
 
-Repeat parity over representative task/pose/camera inputs and measure physical decoded errors, not only
-the default normalized tolerance. Then benchmark using `--engine results/trt/action.engine`. The server
+Repeat parity over representative task/pose/camera inputs and measure physical decoded errors. The tool
+reports errors without a default pass/fail threshold; supply `--max-abs` for an explicit tolerance.
+Then benchmark using `--engine results/trt/action.engine`. The server
 accepts the same option. CPU tests verify that the split velocity wrapper preserves the upstream flow
 rollout and that a small instance exports to ONNX with numerical parity under ONNX's reference evaluator.
 Full-size export, TRT parsing, precision parity and Jetson speed remain unverified here. Export/parser

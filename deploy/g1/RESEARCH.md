@@ -148,7 +148,7 @@ fine-tune; recomputation must include observation-anchored relative EE actions, 
 state rotations, gravity/omega conventions and training-only data. Editing only `meta/stats.json` does
 not update this loader's `precollected_stats_path`.
 
-## Validation status
+## Initial September 30 validation status
 
 New CPU tests cover action/state layout, normalization-key failures, SE(3) anchors, camera-role omission,
 serialization, stale/invalid/unsupported motion rejection, actual 23-DoF URDF FK/IK, data configuration,
@@ -169,5 +169,8 @@ The pre-existing `g1-fridge-fetch` suite returned **14 passed, 3 failed**:
 - A stale camera-view assertion expects a ceiling below 1 m at 0.4 m; current calibration computes
   about 1.10 m. Do not weaken the physical reach checks to make this suite green.
 
-No full model weight inference, Jetson latency, full-size ONNX/TRT export or hardware task success is claimed.
+At that stage, no full model weight inference, Jetson latency, full-size ONNX/TRT export or hardware task
+success was claimed. Later full-weight Jetson inference is documented in [DEPLOYMENT.md](DEPLOYMENT.md).
+The October 13 update removes the old stale/magnitude rejection tests and adds arm/hand execution and
+dataset-verified coordinate/channel conversions; physical can-pickup success remains unverified.
 No changes were made to the existing fridge controller to hide these failures.

@@ -1,0 +1,40 @@
+{
+  "status": "read-only prototype previews; no arm or hand commands sent",
+  "instruction": "pick up the can with the left hand",
+  "hardware": "G1 Edu 23 DoF, BrainCo hands, Orin NX PC2",
+  "fsm_observed": 500,
+  "scene": "Blue Pepsi can visible on table in the head RGB-D image",
+  "camera_roles": ["head_left"],
+  "can_front_median_depth_m": 0.681,
+  "previews": [
+    {
+      "wrist_x_offset_m": 0.15,
+      "offset_verified": false,
+      "robot_run_directory": "results/table-pickup-inspection/preview-015/20261014-020920",
+      "roundtrip_ms": 1849.670450999838,
+      "capture_ms": 605.314116000045,
+      "observation_age_s": 2.462162170999818,
+      "frames_planned": 30,
+      "position_error_max_m": 0.004176203562290737,
+      "rotation_error_max_rad": 0.000523549091624784
+    },
+    {
+      "wrist_x_offset_m": 0.20,
+      "offset_verified": false,
+      "robot_run_directory": "results/table-pickup-inspection/preview-020/20261014-020927",
+      "roundtrip_ms": 1803.1334840002273,
+      "capture_ms": 596.1512539997784,
+      "observation_age_s": 2.40521027099976,
+      "frames_planned": 30,
+      "position_error_max_m": 0.00387261185702942,
+      "rotation_error_max_rad": 0.0005601730573772753
+    }
+  ],
+  "limitations": [
+    "These previews tested the sensor, hand/frame conversion and IK prototype before the final protocol v2 revision.",
+    "The original model server served both requests; the new arm executor was not constructed or exercised on hardware.",
+    "Small IK residuals only show consistency with each assumed transform, not physical hand calibration or task success.",
+    "Full deployment was rejected by automatic approval review because removing actuation cutoffs with unverified geometry creates an unverified motion path.",
+    "After that rejection, the earlier partial preview code was rolled back; G1 is clean at 300fc61 and its original v1 model server remains healthy."
+  ]
+}

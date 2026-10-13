@@ -41,11 +41,17 @@ def test_missing_left_wrist_preserves_right_label(observation, statistics):
     assert example["image_roles"] == ["head_left", "cam_wrist_right"]
 
 
-@pytest.mark.parametrize("key,value", [("left_fig6d", [1.2]*6), ("base_rot", [0]*6), ("left_leg", [0]*5)])
+@pytest.mark.parametrize("key,value", [("left_fig6d", [np.nan]*6), ("base_rot", [0]*5), ("left_leg", [0]*5)])
 def test_invalid_observation_rejected(observation, statistics, key, value):
     observation["state"][key] = value
     with pytest.raises(ValueError):
         WBTAdapter(statistics).example(observation)
+
+
+def test_observation_has_no_added_numeric_cutoffs(observation, statistics):
+    observation["state"]["left_fig6d"] = [1.2]*6
+    observation["state"]["base_rot"] = [0]*6
+    WBTAdapter(statistics).example(observation)
 
 
 def test_invalid_prediction_and_stats(observation, statistics):
@@ -56,6 +62,24 @@ def test_invalid_prediction_and_stats(observation, statistics):
     statistics["UnifoLM_WBT"]["action"]["scale"][0] = 0
     with pytest.raises(ValueError, match="Nonpositive"):
         WBTAdapter(statistics)
+
+
+@pytest.mark.parametrize("shape", [(16, 16, 3), (1200, 2000, 3)])
+def test_image_resolution_has_no_deployment_ceiling(observation, statistics, shape):
+    observation["images"]["head_left"] = np.zeros(shape, dtype=np.uint8)
+    example = WBTAdapter(statistics).example(observation)
+    assert example["image"][0].shape == shape
+
+
+def test_prediction_horizon_has_no_deployment_ceiling(observation, statistics):
+    result = WBTAdapter(statistics).decode(np.zeros((150, 54), dtype=np.float32), observation)
+    assert result["left_T"].shape == (150, 4, 4)
+
+
+@pytest.mark.parametrize("shape", [(0, 54), (30, 53)])
+def test_prediction_still_requires_nonempty_model_schema(observation, statistics, shape):
+    with pytest.raises(ValueError, match="action chunk"):
+        WBTAdapter(statistics).decode(np.zeros(shape, dtype=np.float32), observation)
 
 
 def test_stationary_arm_mask():

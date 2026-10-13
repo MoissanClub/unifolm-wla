@@ -1,0 +1,9 @@
+{
+  "verified": false,
+  "notes": "Vendor teleoperation reference only: 20 cm along wrist-roll x with identity rotation. This has not been measured on this G1, and equivalence to WLA's gripper-base frame has not been established.",
+  "source": "https://github.com/BrainCoTech/unitree-g1-brainco-hand/blob/1c9a703797048c7da1a4031d5c4b9ca79f2904f3/brainco_ws/src/control_py/control_py/unitree_robot/robot_arm_ik.py#L371-L384",
+  "wrist_T_policy": {
+    "left": [[1,0,0,0.20],[0,1,0,0],[0,0,1,0],[0,0,0,1]],
+    "right": [[1,0,0,0.20],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+  }
+}
