@@ -102,59 +102,64 @@ class Sensors:
         self.subscribers = []
         self.cameras = {}
         self.pipeline = None
+        self.pipeline_started = False
         self.odom = None
         self.reference = None
-        if initialize_dds:
-            ChannelFactoryInitialize(0, interface)
-
-        # Poll on demand. A Python callback deserializes all 500 Hz messages
-        # even when the application only needs a fresh sample at capture time.
-        self.low_sub = ChannelSubscriber("rt/lowstate", LowState_)
-        self.low_sub.Init()
-        self.subscribers.append(self.low_sub)
-        def odom_callback(msg):
-            with self.lock:
-                self.odom = msg
-                self.stamps["odometry"] = time.monotonic()
-
-        sub = ChannelSubscriber("rt/odommodestate", SportModeState_)
-        sub.Init(odom_callback)
-        self.subscribers.append(sub)
-        for side in ARM_IDS:
-            def callback(msg, side=side):
-                if len(msg.states) != 6:
-                    return
-                with self.lock:
-                    self.hands[side] = msg
-                    self.stamps[side] = time.monotonic()
-            sub = ChannelSubscriber(f"rt/brainco/{side}/state", MotorStates_)
-            sub.Init(callback)
-            self.subscribers.append(sub)
-        while True:
-            if self.low is None:
-                self.low = self.low_sub.Read()
-            with self.lock:
-                ready = self.low is not None and len(self.hands) == 2 and self.odom is not None
-            if ready:
-                break
-            time.sleep(0.02)
-        if external_images:
-            return
         try:
+            if initialize_dds:
+                ChannelFactoryInitialize(0, interface)
+
+            # Poll on demand. A Python callback deserializes all 500 Hz messages
+            # even when the application only needs a fresh sample at capture time.
+            self.low_sub = ChannelSubscriber("rt/lowstate", LowState_)
+            self.subscribers.append(self.low_sub)
+            self.low_sub.Init()
+            def odom_callback(msg):
+                with self.lock:
+                    self.odom = msg
+                    self.stamps["odometry"] = time.monotonic()
+
+            sub = ChannelSubscriber("rt/odommodestate", SportModeState_)
+            self.subscribers.append(sub)
+            sub.Init(odom_callback)
+            for side in ARM_IDS:
+                def callback(msg, side=side):
+                    if len(msg.states) != 6:
+                        return
+                    with self.lock:
+                        self.hands[side] = msg
+                        self.stamps[side] = time.monotonic()
+                sub = ChannelSubscriber(f"rt/brainco/{side}/state", MotorStates_)
+                self.subscribers.append(sub)
+                sub.Init(callback)
+            while True:
+                if self.low is None:
+                    self.low = self.low_sub.Read()
+                with self.lock:
+                    ready = self.low is not None and len(self.hands) == 2 and self.odom is not None
+                if ready:
+                    break
+                time.sleep(0.02)
+            if external_images:
+                return
             import cv2
             import pyrealsense2 as rs
             self.pipeline = rs.pipeline()
             config = rs.config()
             config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
             self.pipeline.start(config)
+            self.pipeline_started = True
             for role, path in zip(ROLES[1:], (wrist_left, wrist_right)):
                 if path:
                     camera = cv2.VideoCapture(path)
                     self.cameras[role] = camera
                     if not camera.isOpened():
                         raise RuntimeError(f"Cannot open {role} at {path}")
-        except Exception:
-            self.close()
+        except BaseException as initialization_error:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                raise initialization_error from cleanup_error
             raise
 
     def feedback(self):
@@ -240,12 +245,31 @@ class Sensors:
         return np.r_[pose[:3, 3], Rotation.from_matrix(pose[:3, :3]).as_quat()]
 
     def close(self):
-        if self.pipeline is not None:
+        # Detach ownership before closing so repeated cleanup is harmless. A
+        # failing device must not prevent the other cameras/subscribers closing.
+        pipeline, self.pipeline = self.pipeline, None
+        pipeline_started, self.pipeline_started = self.pipeline_started, False
+        cameras, self.cameras = self.cameras, {}
+        subscribers, self.subscribers = self.subscribers, []
+        errors = []
+        if pipeline is not None:
             try:
-                self.pipeline.stop()
-            except RuntimeError:
-                pass
-        for camera in self.cameras.values():
-            camera.release()
-        for sub in self.subscribers:
-            sub.Close()
+                pipeline.stop()
+            except RuntimeError as exc:
+                # RealSense raises when initialization did not reach start().
+                if pipeline_started:
+                    errors.append(exc)
+            except BaseException as exc:
+                errors.append(exc)
+        for camera in cameras.values():
+            try:
+                camera.release()
+            except BaseException as exc:
+                errors.append(exc)
+        for sub in subscribers:
+            try:
+                sub.Close()
+            except BaseException as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]

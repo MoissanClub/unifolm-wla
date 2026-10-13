@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from .contract import PROTOCOL, array
+from .contract import FPS, PROTOCOL, array
 from .robot import ARM_IDS
 from .semantics import policy_hand_to_native, world_pose_to_pelvis
 
 
-def plan_chunk(reply, observation, kin, side="left", fps=30):
+def plan_chunk(reply, observation, kin, side="left", fps=FPS):
     """Return all joint/hand targets plus IK and unsupported-body diagnostics."""
     if side not in ARM_IDS:
         raise ValueError(f"Unknown arm side: {side}")
@@ -70,3 +70,41 @@ def plan_chunk(reply, observation, kin, side="left", fps=30):
         },
         "diagnostics": diagnostics,
     }
+
+
+def main():
+    """Rebuild a saved trajectory without an inference server or robot connection."""
+    import argparse
+    import json
+    from pathlib import Path
+    from model_server.tools.msgpack_numpy import packb, unpackb
+    from .robot import Kinematics23
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--observation", type=Path, required=True)
+    parser.add_argument("--prediction", type=Path, required=True)
+    parser.add_argument("--calibration", type=Path, required=True)
+    parser.add_argument("--urdf", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--side", choices=("left", "right"), default="left")
+    parser.add_argument("--fps", type=float, default=FPS, help="WBT action frame rate")
+    args = parser.parse_args()
+    observation = unpackb(args.observation.read_bytes())
+    prediction = unpackb(args.prediction.read_bytes())
+    calibration = json.loads(args.calibration.read_text())
+    plan = plan_chunk(prediction, observation, Kinematics23(args.urdf, calibration),
+                      side=args.side, fps=args.fps)
+    plan["provenance"] = {"observation": str(args.observation), "prediction": str(args.prediction),
+                          "urdf": str(args.urdf), "calibration": calibration,
+                          "execution": "offline; no robot connection"}
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("xb") as output:
+        output.write(packb(plan))
+    print(json.dumps({"saved": str(args.out), "frames": len(plan["joints"]),
+                      "position_error_max_m": float(np.max(plan["errors"]["position_error_m"])),
+                      "rotation_error_max_rad": float(np.max(plan["errors"]["rotation_error_rad"])),
+                      **plan["diagnostics"]}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

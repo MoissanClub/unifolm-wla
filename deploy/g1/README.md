@@ -140,6 +140,8 @@ python -m deploy.g1.client --steps 20 --calibration /tmp/g1-calibration.json \
 Add `--wrist-left /dev/v4l/by-id/LEFT_DEVICE --wrist-right /dev/v4l/by-id/RIGHT_DEVICE` for wrist cameras.
 Default DDS interface: `enP8p1s0`. Every run saves its calibration, server metadata, observations,
 predictions and timing beneath `results/g1/`. Omitting `--steps` runs until Ctrl-C.
+`outcome.json` records completed observations/chunks, interruptions, the failing phase and cleanup
+errors, including when the server is unavailable. A completed chunk does not mark task success.
 The sensor path polls `rt/lowstate` and subscribes to odometry and the two BrainCo state topics.
 It does not build the existing fridge `Robot` object,
 whose construction starts publishers and changes the arm service.
@@ -229,8 +231,25 @@ The installed 23-DoF BrainCo mounting transform is still unmeasured. The example
 placeholder, and the 29-DoF dataset geometry is not proof of this robot's physical mounting.
 `calibration.brainco23.reference.json` records BrainCo's published 20 cm teleoperation convention as an
 unverified reference. Neither that file nor an identity transform establishes the WLA grasp frame.
+See [CALIBRATION.md](CALIBRATION.md) for fitting the transform from physical measurements without
+loading the model or connecting to the robot.
 No hardware can-pickup success has been established. The executor has no object-contact or
 collision model and does not claim task success when a chunk finishes.
+
+Once a matching v2 observation/prediction pair has been saved, rebuild its plan with the model server
+stopped. This command opens no camera or DDS connection:
+
+```bash
+python -m deploy.g1.trajectory \
+  --observation results/g1/RUN/00000.observation.msgpack \
+  --prediction results/g1/RUN/00000.prediction.msgpack \
+  --calibration /path/to/measured-g1-calibration.json \
+  --urdf ../xr_teleoperate/assets/g1/g1_body23.urdf \
+  --side left --out results/offline-left.plan.msgpack
+```
+
+Rebuilding IK with a different calibration does not rerun the policy with corrected proprioception;
+capture and infer again for a policy evaluation using that calibration.
 
 For a model specifically fine-tuned with the stationary-arm action mask, start the server with
 `--profile stationary_arms`; match the training camera configuration too. Do not present this as the
@@ -284,6 +303,16 @@ Pinocchio, the model dependencies for the velocity test, and PEFT for the merge 
 Preserve the NumPy version used by compiled robotics packages when adding export dependencies;
 NumPy 2 can be ABI-incompatible with existing Pinocchio binaries. These tests do not contact a robot.
 The local validation report is in [RESEARCH.md](RESEARCH.md).
+
+October 13 client follow-up: **129 tests passed, 3 skipped** in the existing workstation conda
+environment. The skips require PEFT/Diffusers, which were not installed for this work. An existing
+msgpack package was exposed from a temporary test path; no installed dependency versions changed.
+The offline planner also reproduced all 30 targets from the saved corrected-semantics can-scene
+prototype using the 23-DoF URDF. This validates the recorded math, not a physical grasp.
+
+The G1 inference server was stopped as requested: available memory increased from about 1.2 GiB to
+12.3 GiB. G1 remains at `300fc61`; automatic approval review blocked the deployment of the proposed
+executor because hand geometry remains unmeasured after removal of motion cutoffs. No motion was sent.
 
 `fridge_baseline.sh sim` and `fridge_baseline.sh check` expose the separate structured controller for
 comparison. The September 30 test results in RESEARCH.md predate its latest bring-up work; use the

@@ -6,7 +6,8 @@ physical can-pickup success: no model-driven robot motion was performed for this
 
 The full patch has **not been deployed to G1**. Automatic approval review rejected the upload because
 it would enable actuation with unmeasured calibration after removing motion cutoffs. The deployed
-server remains on the earlier code; the protocol and behavior described here apply to the proposed patch.
+robot remains on the earlier code (`300fc61`); the protocol and behavior described here apply to the
+proposed patch. The inference server was subsequently stopped at the user's request to free memory.
 
 Old values were checked against commit `300fc61`, particularly `guard.py`, `robot.py`,
 `arms.py`, `client.py`, and `calibration.example.json`. Numerical settings, hardware ranges,

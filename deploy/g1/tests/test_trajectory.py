@@ -82,3 +82,35 @@ def test_nonfinite_chunk_is_invalid_schema(observation, field):
     reply[field].flat[0] = np.nan
     with pytest.raises(ValueError):
         plan_chunk(reply, observation, FakeKinematics())
+
+
+def test_offline_cli_saves_provenance_without_sensor_initialization(tmp_path, observation, calibration, monkeypatch):
+    import json
+    import sys
+    from deploy.g1 import robot, trajectory
+    from model_server.tools.msgpack_numpy import packb, unpackb
+
+    observation_path = tmp_path / "observation.msgpack"
+    prediction_path = tmp_path / "prediction.msgpack"
+    calibration_path = tmp_path / "calibration.json"
+    output = tmp_path / "plan.msgpack"
+    observation_path.write_bytes(packb(observation))
+    prediction_path.write_bytes(packb(reply_for(observation)))
+    calibration_path.write_text(json.dumps(calibration))
+    monkeypatch.setattr(robot, "Kinematics23", lambda *args: FakeKinematics())
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Offline planner must not open sensors")
+
+    monkeypatch.setattr(robot, "Sensors", unexpected)
+    monkeypatch.setattr(sys, "argv", ["trajectory", "--observation", str(observation_path),
+                                     "--prediction", str(prediction_path),
+                                     "--calibration", str(calibration_path), "--urdf", "unused.urdf",
+                                     "--out", str(output)])
+    trajectory.main()
+    result = unpackb(output.read_bytes())
+    assert result["joints"].shape == (30, 5)
+    assert result["provenance"]["execution"] == "offline; no robot connection"
+    assert result["provenance"]["calibration"] == calibration
+    with pytest.raises(FileExistsError):
+        trajectory.main()

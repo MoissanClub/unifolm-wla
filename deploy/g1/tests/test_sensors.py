@@ -166,3 +166,152 @@ def test_standing_reference_keeps_floor_height_and_initial_heading():
     np.testing.assert_allclose(Rotation.from_quat(second[3:]).as_matrix(),
                                (heading_inverse * new_rotation).as_matrix(), atol=1e-14)
     np.testing.assert_array_equal(sensor.reference, reference)
+
+
+@pytest.fixture
+def mock_dds(monkeypatch):
+    sdk = SimpleNamespace(subscribers=[], low=SimpleNamespace(), init_failure=None)
+    hand = SimpleNamespace(states=[SimpleNamespace(q=0.) for _ in range(6)])
+
+    class Subscriber:
+        def __init__(self, topic, message_type):
+            self.topic = topic
+            self.closed = 0
+            sdk.subscribers.append(self)
+
+        def Init(self, handler=None):
+            if self.topic == sdk.init_failure:
+                raise RuntimeError("DDS initialization failed")
+            if self.topic == "rt/odommodestate":
+                handler(SimpleNamespace())
+            elif self.topic.startswith("rt/brainco/"):
+                handler(hand)
+
+        def Read(self):
+            return sdk.low
+
+        def Close(self):
+            self.closed += 1
+
+    monkeypatch.setitem(sys.modules, "unitree_sdk2py.core.channel", SimpleNamespace(
+        ChannelFactoryInitialize=lambda *args: None, ChannelSubscriber=Subscriber))
+    monkeypatch.setitem(sys.modules, "unitree_sdk2py.idl.unitree_hg.msg.dds_",
+                        SimpleNamespace(LowState_=object))
+    monkeypatch.setitem(sys.modules, "unitree_sdk2py.idl.unitree_go.msg.dds_",
+                        SimpleNamespace(MotorStates_=object, SportModeState_=object))
+    return sdk
+
+
+def test_cancel_during_discovery_closes_created_subscribers(monkeypatch, mock_dds):
+    mock_dds.low = None
+
+    def cancel(_):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(robot.time, "sleep", cancel)
+    with pytest.raises(KeyboardInterrupt):
+        robot.Sensors("test-interface", object(), external_images=True)
+    assert len(mock_dds.subscribers) == 4
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+def test_failed_dds_initialization_closes_partially_initialized_subscriber(mock_dds):
+    mock_dds.init_failure = "rt/brainco/right/state"
+    with pytest.raises(RuntimeError, match="DDS initialization failed"):
+        robot.Sensors("test-interface", object(), external_images=True)
+    assert len(mock_dds.subscribers) == 4
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+@pytest.fixture
+def mock_cameras(monkeypatch):
+    hardware = SimpleNamespace(cameras=[], starts=0, stops=0,
+                               open_error=None, release_error=None,
+                               start_error=None, stop_error=None)
+
+    class RealSense:
+        def start(self, config):
+            hardware.starts += 1
+            if hardware.start_error is not None:
+                raise hardware.start_error
+
+        def stop(self):
+            hardware.stops += 1
+            if hardware.stop_error is not None:
+                raise hardware.stop_error
+
+    class Camera:
+        def __init__(self, path):
+            self.path = path
+            self.releases = 0
+            hardware.cameras.append(self)
+
+        def isOpened(self):
+            if self.path == "right":
+                if hardware.open_error is not None:
+                    raise hardware.open_error
+                return False
+            return True
+
+        def release(self):
+            self.releases += 1
+            if self.path == "left" and hardware.release_error is not None:
+                raise hardware.release_error
+
+    monkeypatch.setitem(sys.modules, "cv2", SimpleNamespace(VideoCapture=Camera))
+    monkeypatch.setitem(sys.modules, "pyrealsense2", SimpleNamespace(
+        pipeline=RealSense, config=lambda: SimpleNamespace(enable_stream=lambda *args: None),
+        stream=SimpleNamespace(color=0), format=SimpleNamespace(rgb8=0)))
+    return hardware
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_partial_camera_startup_closes_all_resources(mock_dds, mock_cameras, cancel):
+    if cancel:
+        mock_cameras.open_error = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt if cancel else RuntimeError):
+        robot.Sensors("test-interface", object(), wrist_left="left", wrist_right="right")
+    assert mock_cameras.starts == mock_cameras.stops == 1
+    assert len(mock_cameras.cameras) == 2
+    assert all(camera.releases == 1 for camera in mock_cameras.cameras)
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+def test_startup_error_survives_cleanup_error_and_other_resources_close(mock_dds, mock_cameras):
+    failure = KeyboardInterrupt()
+    mock_cameras.open_error = failure
+    mock_cameras.release_error = RuntimeError("Camera release failed")
+    with pytest.raises(KeyboardInterrupt) as caught:
+        robot.Sensors("test-interface", object(), wrist_left="left", wrist_right="right")
+    assert caught.value is failure
+    assert str(caught.value.__cause__) == "Camera release failed"
+    assert mock_cameras.stops == 1
+    assert all(camera.releases == 1 for camera in mock_cameras.cameras)
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+def test_cancel_inside_realsense_start_closes_subscribers(mock_dds, mock_cameras):
+    mock_cameras.start_error = KeyboardInterrupt()
+    mock_cameras.stop_error = RuntimeError("Pipeline did not start")
+    with pytest.raises(KeyboardInterrupt):
+        robot.Sensors("test-interface", object())
+    assert mock_cameras.starts == mock_cameras.stops == 1
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+def test_running_camera_stop_error_does_not_skip_subscriber_cleanup(mock_dds, mock_cameras):
+    sensor = robot.Sensors("test-interface", object())
+    mock_cameras.stop_error = RuntimeError("Running camera failed to stop")
+    with pytest.raises(RuntimeError, match="Running camera failed to stop"):
+        sensor.close()
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+    sensor.close()
+    assert mock_cameras.stops == 1
+
+
+def test_external_images_return_retains_subscribers_until_idempotent_close(mock_dds):
+    sensor = robot.Sensors("test-interface", object(), external_images=True)
+    assert all(sub.closed == 0 for sub in mock_dds.subscribers)
+    sensor.close()
+    sensor.close()
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)

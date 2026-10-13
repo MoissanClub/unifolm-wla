@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from .contract import array, validate_observation
+from .contract import FPS, array, validate_observation
 from .robot import ARM_IDS
 from .semantics import native_hand_to_policy, pelvis_pose_to_world
 
@@ -97,7 +97,7 @@ class DemoWriter:
             raise RuntimeError(self.error) from failure
 
 
-def resample_timestamps(stamps, fps=30):
+def resample_timestamps(stamps, fps=FPS):
     stamps = np.asarray(stamps, dtype=float)
     if stamps.ndim != 1 or not len(stamps) or not np.isfinite(stamps).all() or np.any(np.diff(stamps) <= 0):
         raise ValueError("Need finite, strictly increasing capture timestamps")
@@ -160,7 +160,7 @@ def main():
                                     "shape": v.shape, "names": ["height", "width", "channel"]
                                     if k.startswith("observation.images.") else None}
                                 for k, v in frame.items()}
-                    dataset = LeRobotDataset.create(repo_id=args.repo_id, root=args.out, fps=30,
+                    dataset = LeRobotDataset.create(repo_id=args.repo_id, root=args.out, fps=FPS,
                                                     robot_type="unitree_g1_23_brainco", features=features,
                                                     use_videos=True, vcodec="libx264")
                 frame["task"] = obs["instruction"]

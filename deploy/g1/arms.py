@@ -11,6 +11,7 @@ import time
 import numpy as np
 
 from .hands import BrainCoHands
+from .contract import FPS
 from .robot import ARM_IDS
 
 
@@ -32,7 +33,7 @@ def interpolate(points, elapsed, fps):
 
 
 class ArmSession:
-    def __init__(self, sensors, side="left", fps=30.0):
+    def __init__(self, sensors, side="left", fps=FPS):
         if side not in ARM_IDS:
             raise ValueError("Arm side must be left or right")
         if not np.isfinite(fps) or fps <= 0:

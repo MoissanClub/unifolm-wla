@@ -6,7 +6,7 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from model_server.tools.msgpack_numpy import packb, unpackb
-from .contract import IMAGE_SIZE, PROTOCOL, WBTAdapter
+from .contract import FPS, IMAGE_SIZE, PROTOCOL, WBTAdapter
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -37,7 +37,7 @@ def main():
                 self.reply(404, {"error": "Unknown route"})
                 return
             self.reply(200, {"protocol": PROTOCOL, "unnorm_key": adapter.key,
-                             "horizon": policy.model.action_horizon, "fps": 30,
+                             "horizon": policy.model.action_horizon, "fps": FPS,
                              "image_size": args.image_size, "allow_missing_cameras": args.allow_missing_cameras,
                              "action_profile": args.profile,
                              "backend": "pytorch+trt-head" if args.engine else "pytorch-bf16"})

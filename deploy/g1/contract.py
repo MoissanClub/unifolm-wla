@@ -16,6 +16,7 @@ from unifolm_wla.dataloader.multi_source_dataset.se3_utils import (
 )
 
 PROTOCOL = "unifolm-g1-wbt-v2"
+FPS = 30  # Released WBT action/recording rate, independent of camera/publisher rates.
 IMAGE_SIZE = (336, 448)  # H,W; upstream unitree.yaml training resolution
 ROLES = ("head_left", "cam_wrist_left", "cam_wrist_right")
 STATE_WIDTHS = {
@@ -29,7 +30,7 @@ ACTION_FIELDS = (
     "left_leg_joint", "right_leg_joint",
 )
 SOURCE = DatasetSourceConfig(
-    name="UnifoLM_WBT", data_path="", robot_type="unitree", source_fps=30,
+    name="UnifoLM_WBT", data_path="", robot_type="unitree", source_fps=FPS,
     arm_type="dual_with_legs", ee_format="xyz_rpy",
 )
 
