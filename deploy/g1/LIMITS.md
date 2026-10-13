@@ -1,13 +1,13 @@
 # Deployment limits audit — 2026-10-13
 
-This **local proposed revision** removes the deployment-specific timing and motion cutoffs below. It adds
+This revision removes the deployment-specific timing and motion cutoffs below. It adds
 complete selected-arm/BrainCo chunk planning and explicit execution. It does not establish
 physical can-pickup success: no model-driven robot motion was performed for this revision.
 
-The full patch has **not been deployed to G1**. Automatic approval review rejected the upload because
-it would enable actuation with unmeasured calibration after removing motion cutoffs. The deployed
-robot remains on the earlier code (`300fc61`); the protocol and behavior described here apply to the
-proposed patch. The inference server was subsequently stopped at the user's request to free memory.
+The full client update was deployed to G1 at `0c49f80` after the user's explicit deployment approval.
+All **129 client tests passed on PC2**; the dependency check passed and all 148 installed package
+versions remained unchanged. The inference server stays stopped at the user's request. No motion
+commands were sent. Hand calibration and physical task success remain unverified.
 
 Old values were checked against commit `300fc61`, particularly `guard.py`, `robot.py`,
 `arms.py`, `client.py`, and `calibration.example.json`. Numerical settings, hardware ranges,

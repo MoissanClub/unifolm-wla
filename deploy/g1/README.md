@@ -311,8 +311,16 @@ The offline planner also reproduced all 30 targets from the saved corrected-sema
 prototype using the 23-DoF URDF. This validates the recorded math, not a physical grasp.
 
 The G1 inference server was stopped as requested: available memory increased from about 1.2 GiB to
-12.3 GiB. G1 remains at `300fc61`; automatic approval review blocked the deployment of the proposed
-executor because hand geometry remains unmeasured after removal of motion cutoffs. No motion was sent.
+12.3 GiB. After explicit deployment approval, client revision `0c49f80` was installed on G1 and
+**all 129 client tests passed on PC2**. The conda dependency check passed; all 148 installed package
+versions remained unchanged. The inference server remains stopped and no motion was sent.
+On-robot backup and verification logs are in `results/deployment-client-0c49f80/`.
+The separate read-only DDS check received 23-DoF PR feedback, both six-channel hand states and
+odometry; see the [deployment record](reports/2026-10-13-client-deployment.json).
+The deployment's live camera check found the RealSense already owned by G1Studio's
+`restaurant_nav/sim_studio/g1_worker.py --drive real` (PID 17481). It was left running; the WLA
+capture attempt reported `VIDIOC_S_FMT` errno 16 (device busy). Camera ownership must be released
+or frames provided by its existing owner before WLA can capture live observations.
 
 `fridge_baseline.sh sim` and `fridge_baseline.sh check` expose the separate structured controller for
 comparison. The September 30 test results in RESEARCH.md predate its latest bring-up work; use the

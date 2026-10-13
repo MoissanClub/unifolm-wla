@@ -1,0 +1,41 @@
+{
+  "revision": "0c49f80d5be3c9750a8191187d37610381da3972",
+  "packages_unchanged": true,
+  "package_count": 148,
+  "inference_server_listening": false,
+  "motion_commands_sent": false,
+  "client_tests": {
+    "passed": 129,
+    "excluded": [
+      "test_velocity.py",
+      "test_lora.py"
+    ],
+    "reason": "Client deployment; no inference/model tests requested"
+  },
+  "dds_feedback": {
+    "mode_machine": 4,
+    "mode_pr": 0,
+    "motor_count": 35,
+    "hand_channels": {
+      "left": 6,
+      "right": 6
+    },
+    "base_pose": [
+      0.0,
+      0.0,
+      0.7765986323356628,
+      -0.000363920921786403,
+      0.008408337596926538,
+      3.0600783474814608e-06,
+      0.9999645830783482
+    ]
+  },
+  "live_camera_check": {
+    "status": "blocked_by_existing_owner",
+    "owner_pid": 17481,
+    "owner": "g1studio/restaurant_nav/sim_studio/g1_worker.py --drive real",
+    "owner_left_running": true,
+    "error": "VIDIOC_S_FMT errno 16: Device or resource busy"
+  },
+  "available_memory_kib": 12694132
+}
