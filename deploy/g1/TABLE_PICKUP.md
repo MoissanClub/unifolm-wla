@@ -2,8 +2,8 @@
 
 This runbook evaluates the released WLA policy on the G1 Edu 23-DoF with standard BrainCo adapters
 and the existing head-camera stream. It uses BrainCo's 20 cm wrist-roll reference as an explicit
-geometry assumption; see [CALIBRATION.md](CALIBRATION.md). A physical can pickup has not yet been
-demonstrated with this client. No measured 4×4 matrices are required for this initial experiment.
+geometry assumption; see [CALIBRATION.md](CALIBRATION.md). Five model-driven arm/hand chunks were executed on October 14, but a physical can pickup has not
+yet been established. See the [trial and resume record](reports/2026-10-14-table-pickup.json). No measured 4×4 matrices are required for this initial experiment.
 
 ## Physical preparation
 
@@ -93,13 +93,14 @@ Arm targets stream at 50 Hz on `rt/arm_sdk`; left-hand finger commands use the s
 `rt/brainco/left/cmd` topic. Before taking arm authority, the client checks the reported
 `g1_arm_example` service state and disables that service when reported running. Switches are
 confirmed from the API 1001 `ServiceSwitch` response (`0` running, `1` stopped), following the
-Unitree example. PC2's `ServiceList` can retain an old status after a successful switch; its initial
-value is used only as the previously reported state to restore, not as confirmation of the switch.
+[Unitree example](../../../unitree_sdk2/example/go2/go2_robot_state_client.cpp). PC2's `ServiceList`
+can retain an old status after a successful switch; its initial value supplies the previously
+reported state for release/restore decisions, not confirmation of a switch.
 
 **Normal completion and Ctrl-C release arm authority** through the SDK weight ramp and restore the
-previously reported built-in arm-service state. The client does not open the hand, but it also does not maintain
-the final arm pose indefinitely after exit. Arm behavior then belongs to the standing/built-in
-controller; account for this when the hand is near the table or holding the can. For an immediate
+previously reported built-in arm-service state. The client does not open the hand, but it also does
+not maintain the final arm pose indefinitely after exit. Arm behavior then belongs to the
+standing/built-in controller; account for this when the hand is near the table or holding the can. For an immediate
 physical stop, use the operator's existing remote stop procedure.
 
 ## 5. Continue closed-loop evaluation

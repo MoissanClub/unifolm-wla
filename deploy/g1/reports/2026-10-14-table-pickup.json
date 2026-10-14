@@ -1,0 +1,569 @@
+{
+  "date_utc": "2026-10-14",
+  "code_commit": "40c8569",
+  "robot": "G1 Edu 23 DoF, standard BrainCo adapters, PC2 Orin NX",
+  "access": "ssh g1",
+  "remote_repo": "/home/unitree/unifolm-wla",
+  "conda_environment": "g1fetch",
+  "user_requested_stop": "User needed to leave; save and resume tomorrow. No further motion authorized while unattended.",
+  "end_state": {
+    "motion_client_running": false,
+    "inference_server_running": false,
+    "inference_port_8601_listening": false,
+    "available_memory_rounded_gib": 12,
+    "arm_authority_released": true,
+    "arm_service_restore_switch_response": {
+      "rpc_code": 0,
+      "status": 0
+    },
+    "locomotion_mode_changed_by_assistant": false,
+    "last_verified_fsm": 500
+  },
+  "fsm_verification": {
+    "interface": "enP8p1s0",
+    "domain": 0,
+    "sdk_call": "LocoClient.GetFsmId()",
+    "results": [
+      [
+        0,
+        500
+      ],
+      [
+        0,
+        500
+      ],
+      [
+        0,
+        500
+      ]
+    ],
+    "raw_api_id": 7001,
+    "raw_response": {
+      "rpc_code": 0,
+      "body": {
+        "data": 500
+      }
+    },
+    "notes": "First repeat attempt used nonexistent eth0 and failed before issuing the query; enP8p1s0 is the verified interface. mode_machine is not FSM ID."
+  },
+  "command_path": {
+    "arm": "rt/arm_sdk, LowCmd_, 50 Hz; motor_cmd[29].q authority",
+    "hand": "rt/brainco/left/cmd, native six-channel position/speed",
+    "other_body": "Right arm and waist held; legs/balance remain with standing controller."
+  },
+  "camera": {
+    "url": "rtsp://127.0.0.1:8554/d435",
+    "decoded_rgb_shape": [
+      1080,
+      1920,
+      3
+    ],
+    "ownership": "Existing teleimager service preserved",
+    "timestamps": "Local decode completion, not exposure; no added capture/freshness deadline"
+  },
+  "calibration": "deploy/g1/calibration.brainco23.reference.json: vendor 20 cm wrist-roll reference, explicitly assumed, not independently measured",
+  "tests": {
+    "client_suite_local_and_pc2_before_handshake_fix": 151,
+    "affected_arm_hand_client_tests_local_and_pc2_after_fix": 58,
+    "dependencies_installed_or_changed": false
+  },
+  "service_issue": {
+    "failed_run": "results/table-pickup-execution/20261014-092239",
+    "failed_outcome": {
+      "status": "failed",
+      "observations": 1,
+      "predictions": 1,
+      "completed_chunks": 0,
+      "execution_requested": true,
+      "last_phase": "arm_start",
+      "task_success": null,
+      "last_step": 0,
+      "error": "RuntimeError: Cannot release built-in arm-service ownership: 0"
+    },
+    "evidence": "Four stop RPCs returned status1 while ServiceList remained0 for more than3s. Python wrapper discards switch status.",
+    "fix": "Confirm returned switch status using official API constant; repeat pending responses without retry/deadline caps. Initial list only supplies previously reported restoration state."
+  },
+  "trial": {
+    "instruction": "pick up the can with the left hand",
+    "run": "results/table-pickup-execution/20261014-092601",
+    "outcome": {
+      "status": "completed",
+      "observations": 5,
+      "predictions": 5,
+      "completed_chunks": 5,
+      "execution_requested": true,
+      "last_phase": "execution",
+      "task_success": null,
+      "last_step": 4
+    },
+    "metrics": [
+      {
+        "step": 0,
+        "roundtrip_ms": 1868.1092459999036,
+        "encode_ms": 1095.356522999964,
+        "head_ms": 737.1046970001771,
+        "total_ms": 1832.461220000141,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924,
+        "mode": "arm-hand-execution",
+        "executed": true,
+        "observation_age_s": 1.9248665750001237,
+        "capture_ms": 6.439756999952806,
+        "observation_age_basis": "local_capture_start_or_decode_completion_not_exposure",
+        "image_metadata": {
+          "head_left": {
+            "source": "rtsp://127.0.0.1:8554/d435",
+            "decode_monotonic": 1193.130534169,
+            "sequence": 1,
+            "timestamp_kind": "local_decode_completion_not_exposure"
+          }
+        },
+        "plan": {
+          "side": "left",
+          "frames": 30,
+          "position_error_max_m": 0.0008666092774907037,
+          "rotation_error_max_rad": 0.00014861144159479032
+        }
+      },
+      {
+        "step": 1,
+        "roundtrip_ms": 1840.0933529999293,
+        "encode_ms": 1082.639436999898,
+        "head_ms": 738.8163059999897,
+        "total_ms": 1821.4557429998877,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924,
+        "mode": "arm-hand-execution",
+        "executed": true,
+        "observation_age_s": 1.890071245999934,
+        "capture_ms": 5.079078000107984,
+        "observation_age_basis": "local_capture_start_or_decode_completion_not_exposure",
+        "image_metadata": {
+          "head_left": {
+            "source": "rtsp://127.0.0.1:8554/d435",
+            "decode_monotonic": 1201.937343602,
+            "sequence": 287,
+            "timestamp_kind": "local_decode_completion_not_exposure"
+          }
+        },
+        "plan": {
+          "side": "left",
+          "frames": 30,
+          "position_error_max_m": 0.006554707596674967,
+          "rotation_error_max_rad": 0.0010170835173016971
+        }
+      },
+      {
+        "step": 2,
+        "roundtrip_ms": 1852.8873119998934,
+        "encode_ms": 1094.7751430001063,
+        "head_ms": 730.3928199999064,
+        "total_ms": 1825.1679630000126,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924,
+        "mode": "arm-hand-execution",
+        "executed": true,
+        "observation_age_s": 1.938346571000011,
+        "capture_ms": 12.161758000047485,
+        "observation_age_basis": "local_capture_start_or_decode_completion_not_exposure",
+        "image_metadata": {
+          "head_left": {
+            "source": "rtsp://127.0.0.1:8554/d435",
+            "decode_monotonic": 1205.708700129,
+            "sequence": 397,
+            "timestamp_kind": "local_decode_completion_not_exposure"
+          }
+        },
+        "plan": {
+          "side": "left",
+          "frames": 30,
+          "position_error_max_m": 0.06132602618276649,
+          "rotation_error_max_rad": 0.010824348893532452
+        }
+      },
+      {
+        "step": 3,
+        "roundtrip_ms": 1910.3123190000133,
+        "encode_ms": 1073.1493509999837,
+        "head_ms": 815.0859460001811,
+        "total_ms": 1888.2352970001648,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924,
+        "mode": "arm-hand-execution",
+        "executed": true,
+        "observation_age_s": 1.9653967570000077,
+        "capture_ms": 7.359551000035935,
+        "observation_age_basis": "local_capture_start_or_decode_completion_not_exposure",
+        "image_metadata": {
+          "head_left": {
+            "source": "rtsp://127.0.0.1:8554/d435",
+            "decode_monotonic": 1209.835194786,
+            "sequence": 517,
+            "timestamp_kind": "local_decode_completion_not_exposure"
+          }
+        },
+        "plan": {
+          "side": "left",
+          "frames": 30,
+          "position_error_max_m": 0.011126160900246056,
+          "rotation_error_max_rad": 0.0017971094473157743
+        }
+      },
+      {
+        "step": 4,
+        "roundtrip_ms": 1899.5069000000058,
+        "encode_ms": 1132.5784010000461,
+        "head_ms": 738.664154999924,
+        "total_ms": 1871.2425559999701,
+        "tokens": 192,
+        "allocated_gib": 11.698903560638428,
+        "peak_allocated_gib": 11.753788471221924,
+        "mode": "arm-hand-execution",
+        "executed": true,
+        "observation_age_s": 1.9521737629997915,
+        "capture_ms": 4.986113000086334,
+        "observation_age_basis": "local_capture_start_or_decode_completion_not_exposure",
+        "image_metadata": {
+          "head_left": {
+            "source": "rtsp://127.0.0.1:8554/d435",
+            "decode_monotonic": 1213.757061142,
+            "sequence": 633,
+            "timestamp_kind": "local_decode_completion_not_exposure"
+          }
+        },
+        "plan": {
+          "side": "left",
+          "frames": 30,
+          "position_error_max_m": 0.002273155855189754,
+          "rotation_error_max_rad": 0.00042513252568684165
+        }
+      }
+    ],
+    "assessment": [
+      {
+        "step": 0,
+        "measured_xyz_pelvis_m": [
+          0.03748784579642283,
+          0.2541011566326784,
+          -0.16656525694368693
+        ],
+        "requested_xyz_start_end_m": [
+          [
+            0.04819323506765404,
+            0.25296837347451534,
+            -0.16061289107077104
+          ],
+          [
+            0.047449914689184435,
+            0.24804297257853497,
+            -0.15967319716388972
+          ]
+        ],
+        "ik_xyz_start_end_m": [
+          [
+            0.048167284772700485,
+            0.25299514430873116,
+            -0.16071576843743243
+          ],
+          [
+            0.047601002242784865,
+            0.2479217724466991,
+            -0.1591298558029033
+          ]
+        ],
+        "max_position_error_m": 0.0008666092774907037,
+        "hand_native_end": [
+          0.27252352237701416,
+          0.8150634765625,
+          0.26190340518951416,
+          0.25647133588790894,
+          0.25695961713790894,
+          0.25879210233688354
+        ],
+        "body_outputs_not_executed": {
+          "execution": "stationary single-arm stop-and-act; other body outputs are not commanded",
+          "base_command_max_abs": [
+            0.01250186562538147,
+            0.028593748807907104,
+            0.03257066011428833,
+            0.7769260406494141
+          ],
+          "base_translation_max_m": 0.012913919053971767,
+          "base_rotation_max_rad": 0.03590966388583183,
+          "waist_change_max_rad": 0.1739051789045334,
+          "leg_change_max_rad": 0.3857937753200531,
+          "other_arm": "right"
+        },
+        "next_observation_joint_error_rad": [
+          -0.013295352458953857,
+          -0.005968555808067322,
+          -0.012138508260250092,
+          0.01391381025314331,
+          -0.010604172945022583
+        ]
+      },
+      {
+        "step": 1,
+        "measured_xyz_pelvis_m": [
+          0.04950641860761459,
+          0.24294385172559102,
+          -0.16100987342129158
+        ],
+        "requested_xyz_start_end_m": [
+          [
+            0.04393404515226151,
+            0.23504779156833566,
+            -0.1701520442647252
+          ],
+          [
+            0.04398607111026016,
+            0.22993666183407405,
+            -0.17407577833447463
+          ]
+        ],
+        "ik_xyz_start_end_m": [
+          [
+            0.04492139604911003,
+            0.23403517131642823,
+            -0.16614964589830594
+          ],
+          [
+            0.04545044804899419,
+            0.22841491108597411,
+            -0.16790258470100433
+          ]
+        ],
+        "max_position_error_m": 0.006554707596674967,
+        "hand_native_end": [
+          0.40332162380218506,
+          0.8125,
+          0.39746224880218506,
+          0.40039193630218506,
+          0.39965951442718506,
+          0.39544928073883057
+        ],
+        "body_outputs_not_executed": {
+          "execution": "stationary single-arm stop-and-act; other body outputs are not commanded",
+          "base_command_max_abs": [
+            0.01250186562538147,
+            0.008906249888241291,
+            0.015450652688741684,
+            0.7756162881851196
+          ],
+          "base_translation_max_m": 0.0039207893423736095,
+          "base_rotation_max_rad": 0.02144397608935833,
+          "waist_change_max_rad": 0.165434330701828,
+          "leg_change_max_rad": 0.41589778661727905,
+          "other_arm": "right"
+        },
+        "next_observation_joint_error_rad": [
+          -0.00663718581199646,
+          -0.012302815914154053,
+          0.0005572736263275146,
+          0.0026198625564575195,
+          0.005958892405033112
+        ]
+      },
+      {
+        "step": 2,
+        "measured_xyz_pelvis_m": [
+          0.04786929015562307,
+          0.22338590284414306,
+          -0.16875576984691043
+        ],
+        "requested_xyz_start_end_m": [
+          [
+            0.06469709811136652,
+            0.22173209715141498,
+            -0.1703318571784932
+          ],
+          [
+            0.1282334860069299,
+            0.18368565480478646,
+            -0.2121515370348025
+          ]
+        ],
+        "ik_xyz_start_end_m": [
+          [
+            0.06574289776516276,
+            0.22042005799031886,
+            -0.16519577858787765
+          ],
+          [
+            0.12780644474084066,
+            0.16351221382285075,
+            -0.1542401294754538
+          ]
+        ],
+        "max_position_error_m": 0.06132602618276649,
+        "hand_native_end": [
+          0.6040047407150269,
+          0.814453125,
+          0.5864266753196716,
+          0.5878915190696716,
+          0.5873422026634216,
+          0.5961930751800537
+        ],
+        "body_outputs_not_executed": {
+          "execution": "stationary single-arm stop-and-act; other body outputs are not commanded",
+          "base_command_max_abs": [
+            0.022908009588718414,
+            0.0234375,
+            0.04683733731508255,
+            0.7753140330314636
+          ],
+          "base_translation_max_m": 0.007421319372951984,
+          "base_rotation_max_rad": 0.06823203712701797,
+          "waist_change_max_rad": 0.1850988119840622,
+          "leg_change_max_rad": 0.38363897800445557,
+          "other_arm": "right"
+        },
+        "next_observation_joint_error_rad": [
+          0.03968873992562294,
+          0.027378171682357788,
+          0.08635717630386353,
+          0.07528698444366455,
+          0.1072317361831665
+        ]
+      },
+      {
+        "step": 3,
+        "measured_xyz_pelvis_m": [
+          0.10453351150395762,
+          0.20502825405322397,
+          -0.1613115621440308
+        ],
+        "requested_xyz_start_end_m": [
+          [
+            0.0797729771051518,
+            0.1971263962004768,
+            -0.17688318764435917
+          ],
+          [
+            0.0739638887779421,
+            0.1993409551769814,
+            -0.17714702450026665
+          ]
+        ],
+        "ik_xyz_start_end_m": [
+          [
+            0.08045361623460845,
+            0.19311059063455985,
+            -0.16668639787177236
+          ],
+          [
+            0.07457359025486124,
+            0.1958971929648521,
+            -0.16842256595694086
+          ]
+        ],
+        "max_position_error_m": 0.011126160900246056,
+        "hand_native_end": [
+          0.36474746465682983,
+          0.8115234375,
+          0.35589736700057983,
+          0.35498183965682983,
+          0.35742324590682983,
+          0.3593776226043701
+        ],
+        "body_outputs_not_executed": {
+          "execution": "stationary single-arm stop-and-act; other body outputs are not commanded",
+          "base_command_max_abs": [
+            0.044240593910217285,
+            0.011249999515712261,
+            0.024010658264160156,
+            0.7765230536460876
+          ],
+          "base_translation_max_m": 0.026988593861460686,
+          "base_rotation_max_rad": 0.0400971919298172,
+          "waist_change_max_rad": 0.2077885866165161,
+          "leg_change_max_rad": 0.3670237064361572,
+          "other_arm": "right"
+        },
+        "next_observation_joint_error_rad": [
+          -0.07648062705993652,
+          -0.03922024369239807,
+          0.036433279514312744,
+          -0.056804776191711426,
+          -0.012048542499542236
+        ]
+      },
+      {
+        "step": 4,
+        "measured_xyz_pelvis_m": [
+          0.13271984316288685,
+          0.163999232035663,
+          -0.15584763085684458
+        ],
+        "requested_xyz_start_end_m": [
+          [
+            0.12985187217186178,
+            0.16034857203016342,
+            -0.1542616583694888
+          ],
+          [
+            0.12755533745798003,
+            0.15803280575624634,
+            -0.15344537454692764
+          ]
+        ],
+        "ik_xyz_start_end_m": [
+          [
+            0.1298309194522619,
+            0.15954047315868136,
+            -0.1521723087633129
+          ],
+          [
+            0.12754441465135138,
+            0.15758383550263544,
+            -0.15230214730464284
+          ]
+        ],
+        "max_position_error_m": 0.002273155855189754,
+        "hand_native_end": [
+          0.4252942204475403,
+          0.81640625,
+          0.4150403141975403,
+          0.4101575016975403,
+          0.4154980778694153,
+          0.416506290435791
+        ],
+        "body_outputs_not_executed": {
+          "execution": "stationary single-arm stop-and-act; other body outputs are not commanded",
+          "base_command_max_abs": [
+            0.008339405059814453,
+            0.007499999832361937,
+            0.015450652688741684,
+            0.7753140330314636
+          ],
+          "base_translation_max_m": 0.0027696150355041027,
+          "base_rotation_max_rad": 0.030401941388845444,
+          "waist_change_max_rad": 0.19508230686187744,
+          "leg_change_max_rad": 0.3963005542755127,
+          "other_arm": "right"
+        }
+      }
+    ],
+    "physical_evidence": "Joint and hand encoder values changed across all five observations. Can remained on table in observation4, taken before final chunk. No confirmed pickup. User left before providing physical-motion description.",
+    "important_limitation": "A completed chunk is not task success; no post-chunk grasp detector."
+  },
+  "artifacts": {
+    "preview": "results/table-pickup-preview/20261014-092150",
+    "post_trial_recording": "results/table-pickup-after/20261014-092718",
+    "bringup": "results/table-pickup-bringup",
+    "office_backup": "results/table-pickup-20261014/g1-runs.tar.gz",
+    "office_backup_sha256": "36f616fe368104de91880bacfb1ef605a0623d8415352f196e14b61c3257a469"
+  },
+  "resume": [
+    "Read this report and deploy/g1/TABLE_PICKUP.md; raw runs are on G1 and backed up in office workspace.",
+    "Reconnect using ssh g1. Confirm operator present, table/can position, current FSM and services; yesterday's readiness is not today's readiness.",
+    "Obtain operator description of last trial: approach direction, hand height relative to table, any contact or unexpected motion. Do not assume pickup.",
+    "Inspect recorded post-trial image and command/feedback alignment. In chunk2, maximum IK position residual was0.061326m; requested targets stayed near/below initial hand height. No extra cutoff was introduced.",
+    "Distinguish policy target issue from 5DoF retargeting error and feedback delay/queue behavior; inspect frame/base height and camera differences before blindly extending trials.",
+    "Start existing model only when needed using the runbook; retain conda and package versions. Continuous execution is available without --steps, but has no success detector."
+  ]
+}
