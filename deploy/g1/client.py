@@ -1,4 +1,8 @@
-"""Record observations, predict, preview trajectories, or explicitly execute one arm."""
+"""Record observations, predict, preview trajectories, or explicitly execute one arm.
+
+Stream observation age uses local decode completion and sensor capture start;
+it does not measure camera exposure time or establish sensor synchronization.
+"""
 from __future__ import annotations
 
 import argparse
@@ -37,6 +41,7 @@ def main():
     parser.add_argument("--interface", default="enP8p1s0")
     parser.add_argument("--urdf", default="../xr_teleoperate/assets/g1/g1_body23.urdf")
     parser.add_argument("--calibration", default="deploy/g1/calibration.example.json")
+    parser.add_argument("--head-stream", help="Read an existing video stream URL instead of opening the head camera")
     parser.add_argument("--wrist-left", help="V4L2 device path")
     parser.add_argument("--wrist-right", help="V4L2 device path")
     parser.add_argument("--steps", type=int, help="Number of observations; omitted runs until Ctrl-C")
@@ -61,7 +66,7 @@ def main():
         "mode": "arm-hand-execution" if execute else "record" if args.record_only else "inference",
     }
     (run / "run.json").write_text(json.dumps(metadata, indent=2))
-    sensors = arms = None
+    sensors = arms = head_stream = None
     latency = []
     primary_error = None
     outcome = {"status": "running", "observations": 0, "predictions": 0,
@@ -75,11 +80,25 @@ def main():
             outcome["last_phase"] = "sensors"
             from .robot import Kinematics23, Sensors
             kin = Kinematics23(args.urdf, calibration)
-            sensors = Sensors(args.interface, kin, args.wrist_left, args.wrist_right)
+            sensors = Sensors(args.interface, kin, args.wrist_left, args.wrist_right,
+                              external_images=bool(args.head_stream))
+            if args.head_stream:
+                outcome["last_phase"] = "head_stream"
+                from .camera import HeadStream
+                head_stream = HeadStream(args.head_stream)
         with (run / "metrics.jsonl").open("w") as log:
             for step in itertools.count() if args.steps is None else range(args.steps):
                 outcome.update(last_step=step, last_phase="capture")
-                obs = unpackb(args.replay.read_bytes()) if args.replay else sensors.observe(args.instruction)
+                if args.replay:
+                    obs = unpackb(args.replay.read_bytes())
+                elif head_stream is not None:
+                    rgb, image_metadata = head_stream.read()
+                    obs = sensors.observe(args.instruction, images={"head_left": rgb})
+                    obs.setdefault("image_metadata", {})["head_left"] = image_metadata
+                    obs["captured_monotonic"] = min(obs["captured_monotonic"],
+                                                    image_metadata["decode_monotonic"])
+                else:
+                    obs = sensors.observe(args.instruction)
                 obs["instruction"] = args.instruction
                 (run / f"{step:05d}.observation.msgpack").write_bytes(packb(obs))
                 outcome["observations"] += 1
@@ -95,7 +114,10 @@ def main():
                 metrics = {"step": step, "roundtrip_ms": elapsed*1000, **reply["metrics"]}
                 metrics.update(mode="inference", executed=False,
                                observation_age_s=time.monotonic()-obs["captured_monotonic"]
-                               if sensors else None, capture_ms=obs.get("capture_ms"))
+                               if sensors else None, capture_ms=obs.get("capture_ms"),
+                               observation_age_basis="local_capture_start_or_decode_completion_not_exposure")
+                if "image_metadata" in obs:
+                    metrics["image_metadata"] = obs["image_metadata"]
                 if args.plan or execute:
                     outcome["last_phase"] = "planning"
                     from .trajectory import plan_chunk
@@ -128,7 +150,7 @@ def main():
         raise
     finally:
         cleanup_errors = []
-        for name, resource in (("arms", arms), ("sensors", sensors)):
+        for name, resource in (("arms", arms), ("head_stream", head_stream), ("sensors", sensors)):
             if resource is not None:
                 try:
                     resource.close()

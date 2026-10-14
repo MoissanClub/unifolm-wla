@@ -7,6 +7,7 @@ experimental TensorRT action-head path. No robot motion was performed while deve
 
 Start with [research and limitations](RESEARCH.md), [the complete fridge task plan](FRIDGE_PLAN.md),
 and [demonstration collection and training](TRAINING.md).
+For the current standard-adapter robot, follow [supervised table pickup](TABLE_PICKUP.md).
 The [restriction audit](LIMITS.md) lists the removed deployment cutoffs and remaining hardware/protocol
 requirements and control settings.
 
@@ -114,8 +115,10 @@ Do not expose this unauthenticated research server directly to the Internet.
 
 ## 3. Capture or evaluate PC2 observations without motion
 
-The process needs sole access to the selected cameras. Inspect the running camera service and stop it
-when you are ready to switch ownership; this package does not stop services automatically.
+Use `--head-stream rtsp://127.0.0.1:8554/d435` to read the existing camera service.
+A background decoder retains the latest frame during inference. Its timestamps represent local
+decode completion, not camera exposure; upstream transport latency is not measured. Without this
+option, direct RealSense capture needs sole camera access. This package does not stop services.
 Capture duration, feedback age and inference latency are reported as measurements, without added
 time cutoffs. Each observation discards the queued RealSense frame and waits for another frame.
 Make a calibration copy:
@@ -126,9 +129,11 @@ python -m deploy.g1.client --record-only --steps 10 \
   --calibration /tmp/g1-calibration.json --instruction "pick up the can with the left hand"
 ```
 
-The example wrist-to-policy transforms are identity **placeholders**. The model's `*_gripper_base`
-end-effector frames must be measured relative to your wrist-roll joints. Until then, shadow predictions
-are diagnostic only. The default URDF is your sibling `xr_teleoperate/assets/g1/g1_body23.urdf`.
+The example transforms are identity **placeholders**. For the confirmed standard BrainCo adapters,
+use `deploy/g1/calibration.brainco23.reference.json` as the explicit 20 cm reference assumption
+for initial supervised trials; see [CALIBRATION.md](CALIBRATION.md). This is not a measured
+calibration or a guarantee of training-frame equivalence. The default URDF is your sibling
+`xr_teleoperate/assets/g1/g1_body23.urdf`.
 
 To query the running policy and save its predictions:
 
@@ -199,7 +204,7 @@ Preview the complete selected-arm trajectory without publishing commands:
 
 ```bash
 python -m deploy.g1.client --plan --side left --steps 1 \
-  --calibration /path/to/measured-g1-calibration.json \
+  --calibration deploy/g1/calibration.brainco23.reference.json \
   --instruction "pick up the can with the left hand"
 ```
 
@@ -214,13 +219,15 @@ It requires FSM 500 and manages the competing built-in arm service. The robot ho
 inference runs, then starts the complete chunk at index zero. This supports slow stop-and-act evaluation;
 it does not reproduce Unitree's full-body WBT controller. The other arm and waist retain their initial
 targets; the standing controller retains leg and balance control. Exit releases arm authority and
-preserves hand closure.
+does not send a hand-opening command. During inference, the latest selected-hand target is
+refreshed at nominally 10 Hz; after exit the bridge's configured watchdog behavior applies.
+Retained grip force is not established by the client.
 
-After the physical frame has been established, the explicit execution command is:
+For a supervised trial using the documented standard-adapter reference, the command is:
 
 ```bash
 python -m deploy.g1.client --execute --side left \
-  --calibration /path/to/measured-g1-calibration.json \
+  --calibration deploy/g1/calibration.brainco23.reference.json \
   --instruction "pick up the can with the left hand"
 ```
 
@@ -230,9 +237,9 @@ grasp-completion detector; a successful DDS write or completed chunk is not proo
 The installed 23-DoF BrainCo mounting transform is still unmeasured. The example remains an identity
 placeholder, and the 29-DoF dataset geometry is not proof of this robot's physical mounting.
 `calibration.brainco23.reference.json` records BrainCo's published 20 cm teleoperation convention as an
-unverified reference. Neither that file nor an identity transform establishes the WLA grasp frame.
-See [CALIBRATION.md](CALIBRATION.md) for fitting the transform from physical measurements without
-loading the model or connecting to the robot.
+unverified reference. The reference is a starting assumption for supervised experiments; an identity placeholder is not
+an appropriate substitute. See [CALIBRATION.md](CALIBRATION.md) for the frame evidence and optional
+measurement procedure without loading the model or connecting to the robot.
 No hardware can-pickup success has been established. The executor has no object-contact or
 collision model and does not claim task success when a chunk finishes.
 
@@ -243,7 +250,7 @@ stopped. This command opens no camera or DDS connection:
 python -m deploy.g1.trajectory \
   --observation results/g1/RUN/00000.observation.msgpack \
   --prediction results/g1/RUN/00000.prediction.msgpack \
-  --calibration /path/to/measured-g1-calibration.json \
+  --calibration deploy/g1/calibration.brainco23.reference.json \
   --urdf ../xr_teleoperate/assets/g1/g1_body23.urdf \
   --side left --out results/offline-left.plan.msgpack
 ```

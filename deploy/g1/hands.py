@@ -1,7 +1,8 @@
 """Explicit BrainCo six-finger commands through the existing DDS bridge.
 
 ChannelFactoryInitialize must be called by the coordinator. Construction and
-shutdown send no targets; the bridge retains its last commanded grasp.
+shutdown send no targets. After publication stops, the bridge's configured
+watchdog behavior applies; retained grip force is not verified by this client.
 """
 from __future__ import annotations
 

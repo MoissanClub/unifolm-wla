@@ -97,11 +97,16 @@ In particular, a recorder whose writer cannot keep up can accumulate a growing m
   RGB camera roles and normalization statistics; CUDA/BF16 serving; one inference worker/batch;
   fixed TensorRT engine shapes; full compatible checkpoints rather than unmerged adapters.
   Missing wrist cameras still require explicit `--allow-missing-cameras`.
-- **Controller settings:** 50 Hz arm publication, 1 s discovery settling, 2 s authority acquisition,
+- **Controller settings:** 50 Hz arm publication, nominal 10 Hz refresh of the latest selected-hand target during inference,
+  1 s discovery settling, 2 s authority acquisition,
   and 1 s release. Arm stiffness is 60, wrist-roll stiffness 40, damping 1.5; commanded arm velocity
   and feedforward torque are zero. BrainCo `dq=1` uses the bridge's full normalized speed.
   These are retained control parameters, not validated task-success thresholds.
-- **Capture/recording settings:** head RGB 640×480 at 30 FPS; model images default to 336×448;
+- **Capture/recording settings:** direct head RGB 640×480 at 30 FPS, or existing stream resolution
+  with `--head-stream` (currently 1920×1080 at 30 FPS). The decoder retains one latest frame, replacing
+  older decoded frames during inference, with no added capture/freshness deadline; shutdown joins
+  after backend reads return. Decode timestamps are not exposure timestamps. Model images default
+  to 336×448;
   one demonstration writer, JPEG quality 95, 30 FPS conversion. Loopback port 8601 remains the
   server default. These settings are not claims of unlimited throughput or arbitrary camera support.
 - **Environment/training:** conda and installed-version preservation remain the user's requirements.

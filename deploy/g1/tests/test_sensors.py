@@ -290,6 +290,27 @@ def test_startup_error_survives_cleanup_error_and_other_resources_close(mock_dds
     assert all(sub.closed == 1 for sub in mock_dds.subscribers)
 
 
+def test_external_head_opens_only_requested_wrist_camera(mock_dds, mock_cameras):
+    sensor = robot.Sensors("test-interface", object(), wrist_left="left", external_images=True)
+    assert mock_cameras.starts == 0
+    assert [camera.path for camera in mock_cameras.cameras] == ["left"]
+    sensor.close()
+    assert mock_cameras.cameras[0].releases == 1
+    assert all(sub.closed == 1 for sub in mock_dds.subscribers)
+
+
+def test_external_head_keeps_optional_wrist_and_does_not_mutate_input(clock, monkeypatch):
+    sensor = sensors(None)
+    bgr = np.array([[[10, 20, 30]]], dtype=np.uint8)
+    sensor.cameras = {"wrist_left": SimpleNamespace(read=lambda: (True, bgr))}
+    monkeypatch.setitem(sys.modules, "cv2", SimpleNamespace(
+        COLOR_BGR2RGB=1, cvtColor=lambda image, code: image[..., ::-1].copy()))
+    supplied = {"head_left": np.zeros((2, 2, 3), dtype=np.uint8)}
+    observation = sensor.observe("pick up the can", supplied)
+    assert set(supplied) == {"head_left"}
+    np.testing.assert_array_equal(observation["images"]["wrist_left"], [[[30, 20, 10]]])
+
+
 def test_cancel_inside_realsense_start_closes_subscribers(mock_dds, mock_cameras):
     mock_cameras.start_error = KeyboardInterrupt()
     mock_cameras.stop_error = RuntimeError("Pipeline did not start")

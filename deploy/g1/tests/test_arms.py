@@ -78,6 +78,27 @@ def sensors():
     return SimpleNamespace(feedback=lambda: (SimpleNamespace(mode_machine=4), motors.copy(), {}))
 
 
+@pytest.fixture
+def manual_session(sdk, sensors, monkeypatch):
+    """Run the real publisher path on a controlled clock without a worker race."""
+    session = arms.ArmSession(sensors)
+    session.start()
+    session.stop_event.set()
+    session.thread.join()
+    monkeypatch.setattr(session, "check", lambda: None)
+    clock = SimpleNamespace(now=0.0)
+
+    def sleep(duration):
+        clock.now += duration
+        session._publish()
+
+    monkeypatch.setattr(arms, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep))
+    try:
+        yield session, clock
+    finally:
+        session.close()
+
+
 def test_constructor_and_unstarted_close_do_not_touch_robot(sdk, sensors):
     session = arms.ArmSession(sensors)
     session.close()
@@ -138,7 +159,7 @@ def test_interpolation_starts_measured_and_uses_all_frames():
     np.testing.assert_allclose(arms.interpolate(points, 10, 30), points[2])
 
 
-def test_left_plan_holds_right_waist_and_retains_grasp_on_close(sdk, sensors):
+def test_left_plan_holds_right_waist_and_does_not_open_hand_on_close(sdk, sensors):
     session = arms.ArmSession(sensors)
     session.start()
     plan = {"side": "left", "fps": 30, "joints": np.array([[0.2] * 5, [0.4] * 5]),
@@ -150,7 +171,10 @@ def test_left_plan_holds_right_waist_and_retains_grasp_on_close(sdk, sensors):
     finally:
         session.close()
     hand_messages = sdk.publishers["rt/brainco/left/cmd"].messages
-    assert [[c.q for c in m.cmds] for m in hand_messages] == plan["hands"].tolist()
+    targets = [[c.q for c in m.cmds] for m in hand_messages]
+    changes = [target for index, target in enumerate(targets)
+               if index == 0 or target != targets[index - 1]]
+    assert changes == plan["hands"].tolist()
     assert not sdk.publishers["rt/brainco/right/cmd"].messages
     _, motors, _ = sensors.feedback()
     for message in sdk.publishers["rt/arm_sdk"].messages:
@@ -158,6 +182,58 @@ def test_left_plan_holds_right_waist_and_retains_grasp_on_close(sdk, sensors):
         assert [message.motor_cmd[i].q for i in ARM_IDS["right"]] == motors[list(ARM_IDS["right"])].tolist()
     last = sdk.publishers["rt/arm_sdk"].messages[-1]
     assert [last.motor_cmd[i].q for i in ARM_IDS["left"]] == plan["joints"][-1].tolist()
+
+
+def test_all_hand_keyframes_keep_timing_then_refresh_through_inference(manual_session, sdk, monkeypatch):
+    session, clock = manual_session
+    sends = []
+    write = session.hands.write
+
+    def record(side, target):
+        sends.append((clock.now, np.asarray(target).copy()))
+        return write(side, target)
+
+    monkeypatch.setattr(session.hands, "write", record)
+    # Standing before playback must not invent a hand target.
+    clock.now = 1.0
+    session._publish()
+    assert not sends
+    plan = {"side": "left", "fps": 30, "joints": np.zeros((30, 5)),
+            "hands": np.linspace(0, 1, 30)[:, None] * np.ones((30, 6))}
+    started = clock.now
+    session.play(plan)
+    np.testing.assert_allclose([stamp for stamp, _ in sends], started + np.arange(1, 31) / 30)
+    np.testing.assert_allclose([target for _, target in sends], plan["hands"])
+    # No new chunk is supplied during this simulated two-second inference.
+    for _ in range(20):
+        clock.now += 0.101
+        session._publish()
+    assert len(sends) == 50
+    np.testing.assert_allclose([target for _, target in sends[30:]],
+                               np.repeat(plan["hands"][-1][None], 20, axis=0))
+    assert not sdk.publishers["rt/brainco/right/cmd"].messages
+
+
+def test_close_stops_overdue_heartbeat_in_final_publish(manual_session, sdk):
+    session, clock = manual_session
+    session.play({"joints": np.zeros((1, 5)), "hands": np.full((1, 6), 0.7)})
+    before = len(sdk.publishers["rt/brainco/left/cmd"].messages)
+    clock.now += 1.0
+    session.close()
+    assert len(sdk.publishers["rt/brainco/left/cmd"].messages) == before
+    assert not sdk.publishers["rt/brainco/right/cmd"].messages
+    assert sdk.publishers["rt/arm_sdk"].messages[-1].motor_cmd[29].q == 0.0
+
+
+def test_failed_hand_heartbeat_is_reported_by_arm_loop(manual_session, sdk, monkeypatch):
+    session, clock = manual_session
+    session.play({"joints": np.zeros((1, 5)), "hands": np.full((1, 6), 0.7)})
+    monkeypatch.setattr(sdk.publishers["rt/brainco/left/cmd"], "Write", lambda message: False)
+    clock.now += 1.0
+    session.stop_event.clear()
+    session._loop()
+    assert session.stop_event.is_set()
+    assert session.fault == "BrainCo left DDS write failed"
 
 
 def test_invalid_plan_never_sends_hand_commands(sdk, sensors):

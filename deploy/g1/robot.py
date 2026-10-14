@@ -140,15 +140,14 @@ class Sensors:
                 if ready:
                     break
                 time.sleep(0.02)
-            if external_images:
-                return
             import cv2
-            import pyrealsense2 as rs
-            self.pipeline = rs.pipeline()
-            config = rs.config()
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
-            self.pipeline.start(config)
-            self.pipeline_started = True
+            if not external_images:
+                import pyrealsense2 as rs
+                self.pipeline = rs.pipeline()
+                config = rs.config()
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+                self.pipeline.start(config)
+                self.pipeline_started = True
             for role, path in zip(ROLES[1:], (wrist_left, wrist_right)):
                 if path:
                     camera = cv2.VideoCapture(path)
@@ -193,7 +192,10 @@ class Sensors:
             if not image:
                 raise RuntimeError("No RealSense color frame")
             images = {"head_left": np.asanyarray(image.get_data()).copy()}
-            for role, camera in self.cameras.items():
+        else:
+            images = dict(images)
+        for role, camera in self.cameras.items():
+            if role not in images:
                 ok, bgr = camera.read()
                 if not ok:
                     raise RuntimeError(f"Missing image: {role}")

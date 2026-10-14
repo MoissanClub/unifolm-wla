@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from deploy.g1 import arms, client, robot, trajectory
+from deploy.g1 import arms, camera, client, robot, trajectory
 from deploy.g1.contract import PROTOCOL, WBTAdapter
 from model_server.tools.msgpack_numpy import packb, unpackb
 
@@ -18,6 +18,8 @@ def client_run(tmp_path, monkeypatch, observation, statistics, calibration):
     calibration_path = tmp_path / "calibration.json"
     calibration_path.write_text(json.dumps(calibration))
     output = tmp_path / "runs"
+    stream_rgb = np.array([[[17, 31, 47]]], dtype=np.uint8)
+    stream_options = {"decode_monotonic": 90.0}
 
     def visit(stage):
         events.append(stage)
@@ -31,17 +33,41 @@ def client_run(tmp_path, monkeypatch, observation, statistics, calibration):
             visit("kinematics")
 
     class Sensors:
-        def __init__(self, *args):
+        def __init__(self, *args, external_images=False):
             visit("sensors:init")
+            self.external_images = external_images
+            if not external_images:
+                visit("sensors:direct_camera")
 
-        def observe(self, instruction):
+        def observe(self, instruction, images=None):
             visit("observe")
             obs = copy.deepcopy(observation)
             obs["instruction"] = instruction
+            if self.external_images:
+                assert images is not None and "head_left" in images
+                obs["images"] = images
+            else:
+                assert images is None
             return obs
 
         def close(self):
             visit("sensors:close")
+
+    class HeadStream:
+        def __init__(self, url):
+            visit("stream:init")
+            self.url = url
+
+        def read(self):
+            visit("stream:read")
+            return stream_rgb.copy(), {
+                "source": self.url, "decode_monotonic": stream_options["decode_monotonic"],
+                "sequence": calls["stream:read"],
+                "timestamp_kind": "local_decode_completion_not_exposure",
+            }
+
+        def close(self):
+            visit("stream:close")
 
     class ArmSession:
         def __init__(self, sensors, side, fps):
@@ -80,6 +106,7 @@ def client_run(tmp_path, monkeypatch, observation, statistics, calibration):
 
     monkeypatch.setattr(robot, "Kinematics23", Kinematics)
     monkeypatch.setattr(robot, "Sensors", Sensors)
+    monkeypatch.setattr(camera, "HeadStream", HeadStream)
     monkeypatch.setattr(arms, "ArmSession", ArmSession)
     monkeypatch.setattr(client, "request", request)
     monkeypatch.setattr(trajectory, "plan_chunk", plan_chunk)
@@ -93,7 +120,8 @@ def client_run(tmp_path, monkeypatch, observation, statistics, calibration):
         client.main()
 
     return SimpleNamespace(run=run, events=events, faults=faults, output=output,
-                           observation=observation, tmp_path=tmp_path)
+                           observation=observation, tmp_path=tmp_path,
+                           stream_rgb=stream_rgb, stream_options=stream_options)
 
 
 @pytest.mark.parametrize("preview", [False, True])
@@ -226,11 +254,13 @@ def test_unavailable_server_saves_failure_without_initializing_hardware(client_r
 
 
 @pytest.mark.parametrize("preview", [False, True])
-def test_replay_never_initializes_sensors_or_arm_publishers(client_run, preview):
+@pytest.mark.parametrize("stream", [False, True])
+def test_replay_never_initializes_sensors_or_arm_publishers(client_run, preview, stream):
     path = client_run.tmp_path / "replay.msgpack"
     path.write_bytes(packb(client_run.observation))
-    client_run.run("--replay", path, *(["--plan"] if preview else []))
-    assert not any(event.startswith(("sensors:", "arms:")) for event in client_run.events)
+    stream_args = ["--head-stream", "rtsp://127.0.0.1:8554/d435"] if stream else []
+    client_run.run("--replay", path, *(["--plan"] if preview else []), *stream_args)
+    assert not any(event.startswith(("sensors:", "arms:", "stream:")) for event in client_run.events)
     assert ("kinematics" in client_run.events) is preview
     run_dir, = client_run.output.iterdir()
     obs = unpackb((run_dir / "00000.observation.msgpack").read_bytes())
@@ -261,3 +291,59 @@ def test_record_only_does_not_call_policy_or_construct_arm_session(client_run):
     assert outcome["observations"] == 1
     assert outcome["predictions"] == outcome["completed_chunks"] == 0
     assert outcome["status"] == "completed"
+
+
+@pytest.mark.parametrize("record_only", [False, True])
+@pytest.mark.parametrize("decoded", [90.0, 110.0])
+def test_head_stream_supplies_rgb_without_opening_camera(client_run, record_only, decoded):
+    url = "rtsp://127.0.0.1:8554/d435"
+    client_run.stream_options["decode_monotonic"] = decoded
+    client_run.run("--head-stream", url, *(["--record-only"] if record_only else []))
+    assert "sensors:direct_camera" not in client_run.events
+    assert not any(event.startswith("arms:") for event in client_run.events)
+    assert client_run.events[-2:] == ["stream:close", "sensors:close"]
+    run_dir, = client_run.output.iterdir()
+    obs = unpackb((run_dir / "00000.observation.msgpack").read_bytes())
+    np.testing.assert_array_equal(obs["images"]["head_left"], client_run.stream_rgb)
+    assert obs["captured_monotonic"] == min(100.0, decoded)
+    assert obs["image_metadata"]["head_left"] == {
+        "source": url, "decode_monotonic": decoded, "sequence": 1,
+        "timestamp_kind": "local_decode_completion_not_exposure",
+    }
+    if record_only:
+        assert "health" not in client_run.events
+        assert "predict" not in client_run.events
+    else:
+        metrics = json.loads((run_dir / "metrics.jsonl").read_text().splitlines()[0])
+        assert metrics["observation_age_basis"] == "local_capture_start_or_decode_completion_not_exposure"
+        assert metrics["image_metadata"] == obs["image_metadata"]
+
+
+def test_head_stream_read_failure_releases_stream_and_sensors(client_run):
+    client_run.faults[("stream:read", 1)] = RuntimeError("decode failed")
+    with pytest.raises(RuntimeError, match="decode failed"):
+        client_run.run("--head-stream", "rtsp://127.0.0.1:8554/d435", "--execute")
+    assert not any(event.startswith("arms:") for event in client_run.events)
+    assert client_run.events[-2:] == ["stream:close", "sensors:close"]
+    run_dir, = client_run.output.iterdir()
+    outcome = json.loads((run_dir / "outcome.json").read_text())
+    assert outcome["status"] == "failed"
+    assert outcome["last_phase"] == "capture"
+    assert outcome["observations"] == outcome["predictions"] == 0
+
+
+def test_execution_closes_arms_before_stream_and_sensor_resources(client_run):
+    client_run.run("--head-stream", "rtsp://127.0.0.1:8554/d435", "--execute")
+    assert client_run.events[-3:] == ["arms:close", "stream:close", "sensors:close"]
+
+
+def test_stream_cleanup_failure_preserves_primary_error_and_closes_sensors(client_run):
+    client_run.faults[("stream:read", 1)] = RuntimeError("decode failed")
+    client_run.faults[("stream:close", 1)] = OSError("stream release failed")
+    with pytest.raises(RuntimeError, match="decode failed"):
+        client_run.run("--head-stream", "rtsp://127.0.0.1:8554/d435")
+    assert client_run.events[-2:] == ["stream:close", "sensors:close"]
+    run_dir, = client_run.output.iterdir()
+    outcome = json.loads((run_dir / "outcome.json").read_text())
+    assert outcome["error"] == "RuntimeError: decode failed"
+    assert outcome["cleanup_errors"] == ["head_stream: OSError: stream release failed"]

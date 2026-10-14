@@ -17,6 +17,7 @@ from .robot import ARM_IDS
 
 ARM_SERVICE = "g1_arm_example"
 STREAM_HZ = 50.0  # Unitree's arm5 SDK example and the measured PC2 deployment.
+HAND_HEARTBEAT_HZ = 10.0  # Keep the selected hand's position target active during inference.
 DISCOVERY_S = 1.0  # DDS discovery settling measured in the fridge deployment.
 RAMP_IN_S = 2.0
 RAMP_OUT_S = 1.0
@@ -44,6 +45,8 @@ class ArmSession:
         self.publisher = self.hands = self.thread = self.services = None
         self.command = {}
         self.trajectory = None
+        self.hand_target = None
+        self.hand_sent_at = None
         self.weight = 0.0
         self.fault = None
         self.restore_service = False
@@ -126,6 +129,10 @@ class ArmSession:
             self.message.crc = self.crc.Crc(self.message)
             if self.publisher.Write(self.message) is False:
                 raise RuntimeError("Arm SDK DDS write failed")
+            if (not self.closed and self.hand_target is not None
+                    and time.monotonic() - self.hand_sent_at >= 1 / HAND_HEARTBEAT_HZ):
+                self.hands.write(self.side, self.hand_target)
+                self.hand_sent_at = time.monotonic()
 
     def _loop(self):
         while not self.stop_event.is_set():
@@ -187,7 +194,12 @@ class ArmSession:
                     break
                 self.check()
                 time.sleep(min(1 / STREAM_HZ, remaining))
-            self.hands.write(self.side, hand)
+            with self.lock:
+                if self.closed:
+                    raise RuntimeError("Arm session is closed")
+                self.hands.write(self.side, hand)
+                self.hand_target = hand.copy()
+                self.hand_sent_at = time.monotonic()
         self.check()
         with self.lock:
             self.command[self.side] = joints[-1].copy()
@@ -195,13 +207,14 @@ class ArmSession:
 
     def close(self):
         """Release arm authority and restore the previous service; never open hands."""
-        if self.closed:
-            return
-        self.closed = True
+        with self.lock:
+            if self.closed:
+                return
+            self.closed = True
+            self.hand_target = None
+            self.trajectory = None
         errors = []
         try:
-            with self.lock:
-                self.trajectory = None
             if self.thread is not None and self.thread.is_alive() and self.fault is None:
                 self._ramp(0.0, RAMP_OUT_S)
         except BaseException as exc:
