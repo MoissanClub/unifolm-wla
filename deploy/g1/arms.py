@@ -5,6 +5,7 @@ operator's emergency stop; this module never changes the locomotion FSM.
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -63,11 +64,41 @@ class ArmSession:
             raise RuntimeError(f"Cannot query arm-service ownership: {code}")
         for service in services:
             if service.name == ARM_SERVICE:
-                # Unitree G1 RobotStateClient documentation: 0=running, 1=stopped.
+                # Previously reported state only: PC2's list can remain unchanged
+                # after a switch. Confirm transitions using the switch response.
                 if service.status not in (0, 1):
                     raise RuntimeError(f"Unknown {ARM_SERVICE} status: {service.status}")
                 return service.status
         raise RuntimeError(f"ServiceList does not contain {ARM_SERVICE}")
+
+    def _switch_service(self, enabled):
+        """Use the switch response; PC2's ServiceList retains the old status."""
+        from unitree_sdk2py.go2.robot_state.robot_state_api import ROBOT_STATE_API_ID_SERVICE_SWITCH
+
+        desired = 0 if enabled else 1
+        action = "restore" if enabled else "release"
+        while True:
+            # The Python ServiceSwitch wrapper discards the returned state. The
+            # official C++ example repeats this RPC until that state changes.
+            code, data = self.services._Call(
+                ROBOT_STATE_API_ID_SERVICE_SWITCH,
+                json.dumps({"name": ARM_SERVICE, "switch": int(enabled)}))
+            if code != 0:
+                raise RuntimeError(f"Cannot {action} built-in arm-service ownership: {code}")
+            response = json.loads(data)
+            if not isinstance(response, dict) or response.get("name") != ARM_SERVICE:
+                raise RuntimeError(f"Invalid arm-service switch response: {response!r}")
+            status = response.get("status")
+            if type(status) is not int or status not in (0, 1):
+                detail = "protected" if status == 5 else f"unknown status {status!r}"
+                raise RuntimeError(f"Cannot {action} built-in arm-service ownership: {detail}")
+            if status == desired:
+                print(json.dumps({"arm_service": ARM_SERVICE, "enabled": enabled,
+                                  "rpc_code": code, "switch_status": status}), flush=True)
+                return
+            # A successful RPC can still report the old service state. Preserve
+            # the SDK error handling and allow Ctrl-C instead of imposing a deadline.
+            time.sleep(DISCOVERY_S)
 
     def start(self):
         """Take arm authority only after the caller completes its preflight."""
@@ -92,9 +123,7 @@ class ArmSession:
         try:
             if status == 0:
                 self.restore_service = True
-                code = self.services.ServiceSwitch(ARM_SERVICE, False)
-                if code != 0 or self._service_status() != 1:
-                    raise RuntimeError(f"Cannot release built-in arm-service ownership: {code}")
+                self._switch_service(False)
             low, motors, _ = self.sensors.feedback()
             self.command = {side: motors[list(ids)].copy() for side, ids in ARM_IDS.items()}
             self.waist = float(motors[12])
@@ -206,7 +235,7 @@ class ArmSession:
             self.trajectory = None
 
     def close(self):
-        """Release arm authority and restore the previous service; never open hands."""
+        """Release arm authority and restore the previously reported service state."""
         with self.lock:
             if self.closed:
                 return
@@ -242,9 +271,7 @@ class ArmSession:
             if self.restore_service:
                 self.restore_service = False
                 try:
-                    code = self.services.ServiceSwitch(ARM_SERVICE, True)
-                    if code != 0 or self._service_status() != 0:
-                        raise RuntimeError(f"Cannot restore {ARM_SERVICE}: {code}")
+                    self._switch_service(True)
                 except Exception as exc:
                     errors.append(exc)
         if errors:

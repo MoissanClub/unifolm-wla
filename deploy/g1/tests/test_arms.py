@@ -1,5 +1,6 @@
 """Arm/hand scheduling and service ownership with an entirely fake Unitree SDK."""
 import copy
+import json
 import sys
 from types import SimpleNamespace
 
@@ -12,7 +13,8 @@ from deploy.g1.robot import ARM_IDS
 
 @pytest.fixture
 def sdk(monkeypatch):
-    state = SimpleNamespace(publishers={}, status=0, switches=[], fsm=500)
+    state = SimpleNamespace(publishers={}, status=0, switches=[], fsm=500,
+                            switch_statuses={False: [], True: []}, list_status=None)
 
     class Publisher:
         def __init__(self, topic, message_type):
@@ -42,12 +44,20 @@ def sdk(monkeypatch):
             pass
 
         def ServiceList(self):
-            return 0, [SimpleNamespace(name=arms.ARM_SERVICE, status=state.status)]
+            status = state.status if state.list_status is None else state.list_status
+            return 0, [SimpleNamespace(name=arms.ARM_SERVICE, status=status)]
 
         def ServiceSwitch(self, name, enabled):
             state.switches.append((name, enabled))
-            state.status = 0 if enabled else 1
+            pending = state.switch_statuses[enabled]
+            state.status = pending.pop(0) if pending else 0 if enabled else 1
             return 0
+
+        def _Call(self, api_id, parameter):
+            assert api_id == 1001
+            request = json.loads(parameter)
+            code = self.ServiceSwitch(request["name"], bool(request["switch"]))
+            return code, json.dumps({"name": request["name"], "status": state.status})
 
     def lowcmd():
         return SimpleNamespace(motor_cmd=[SimpleNamespace(q=0, dq=0, tau=0, kp=0, kd=0)
@@ -57,6 +67,7 @@ def sdk(monkeypatch):
         "unitree_sdk2py.core.channel": SimpleNamespace(ChannelPublisher=Publisher),
         "unitree_sdk2py.g1.loco.g1_loco_client": SimpleNamespace(LocoClient=Loco),
         "unitree_sdk2py.go2.robot_state.robot_state_client": SimpleNamespace(RobotStateClient=Services),
+        "unitree_sdk2py.go2.robot_state.robot_state_api": SimpleNamespace(ROBOT_STATE_API_ID_SERVICE_SWITCH=1001),
         "unitree_sdk2py.idl.default": SimpleNamespace(
             unitree_hg_msg_dds__LowCmd_=lowcmd, unitree_go_msg_dds__MotorCmd_=SimpleNamespace),
         "unitree_sdk2py.idl.unitree_hg.msg.dds_": SimpleNamespace(LowCmd_=SimpleNamespace),
@@ -108,7 +119,7 @@ def test_constructor_and_unstarted_close_do_not_touch_robot(sdk, sensors):
 
 
 @pytest.mark.parametrize("initial_status", [0, 1])
-def test_service_ownership_restores_exact_prior_state(sdk, sensors, initial_status):
+def test_service_ownership_restores_previously_reported_state(sdk, sensors, initial_status):
     sdk.status = initial_status
     session = arms.ArmSession(sensors)
     session.start()
@@ -121,6 +132,69 @@ def test_service_ownership_restores_exact_prior_state(sdk, sensors, initial_stat
     assert not sdk.publishers["rt/brainco/left/cmd"].messages
     assert not sdk.publishers["rt/brainco/right/cmd"].messages
     assert sdk.publishers["rt/arm_sdk"].messages[-1].motor_cmd[29].q == 0.0
+
+
+def test_switch_response_confirms_ownership_despite_unchanged_service_list(sdk, sensors, capsys):
+    sdk.list_status = 0
+    session = arms.ArmSession(sensors)
+    session.start()
+    assert sdk.status == 1
+    assert session._service_status() == 0
+    session.close()
+    assert sdk.status == 0
+    confirmations = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [(entry["enabled"], entry["switch_status"]) for entry in confirmations] == [(False, 1), (True, 0)]
+
+
+def test_pending_switches_retry_acquisition_and_restoration(sdk, sensors):
+    sdk.switch_statuses = {False: [0, 0, 1], True: [1, 0]}
+    session = arms.ArmSession(sensors)
+    session.start()
+    assert sdk.status == 1
+    session.close()
+    assert sdk.status == 0
+    assert [enabled for _, enabled in sdk.switches] == [False, False, False, True, True]
+
+
+def test_interrupt_pending_acquisition_restores_service_without_publishers(sdk, sensors, monkeypatch):
+    sdk.switch_statuses = {False: [0, 1], True: [1, 0]}
+    sleeps = []
+
+    def sleep(duration):
+        sleeps.append(duration)
+        if len(sleeps) == 2:  # Initial discovery, then a pending switch response.
+            sdk.status = 1  # The backend finishes switching after its response.
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(arms, "time", SimpleNamespace(monotonic=arms.time.monotonic, sleep=sleep))
+    session = arms.ArmSession(sensors)
+    with pytest.raises(KeyboardInterrupt):
+        session.start()
+    assert sdk.status == 0
+    assert [enabled for _, enabled in sdk.switches] == [False, True, True]
+    assert not sdk.publishers
+    assert session.closed
+
+
+@pytest.mark.parametrize("code,response,reason", [
+    (3104, {}, "3104"),
+    (0, {"name": arms.ARM_SERVICE, "status": 5}, "protected"),
+    (0, {"name": arms.ARM_SERVICE, "status": 7}, "unknown status"),
+    (0, {"name": "other", "status": 1}, "Invalid arm-service switch response"),
+    (0, {"name": arms.ARM_SERVICE}, "unknown status"),
+])
+def test_switch_errors_are_not_retried(sdk, sensors, code, response, reason):
+    calls = []
+
+    def call(api_id, parameter):
+        calls.append((api_id, parameter))
+        return code, json.dumps(response)
+
+    session = arms.ArmSession(sensors)
+    session.services = SimpleNamespace(_Call=call)
+    with pytest.raises(RuntimeError, match=reason):
+        session._switch_service(False)
+    assert len(calls) == 1
 
 
 def test_nonstanding_mode_never_takes_authority(sdk, sensors):

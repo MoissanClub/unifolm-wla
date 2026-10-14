@@ -89,8 +89,15 @@ targets, and the standing controller retains leg and balance control. While wait
 prediction in a continuing run, the arm holds its last target. Inspect whether the physical motion
 and hand behavior correspond to the plan before continuing.
 
+Arm targets stream at 50 Hz on `rt/arm_sdk`; left-hand finger commands use the separate
+`rt/brainco/left/cmd` topic. Before taking arm authority, the client checks the reported
+`g1_arm_example` service state and disables that service when reported running. Switches are
+confirmed from the API 1001 `ServiceSwitch` response (`0` running, `1` stopped), following the
+Unitree example. PC2's `ServiceList` can retain an old status after a successful switch; its initial
+value is used only as the previously reported state to restore, not as confirmation of the switch.
+
 **Normal completion and Ctrl-C release arm authority** through the SDK weight ramp and restore the
-prior built-in arm-service state. The client does not open the hand, but it also does not maintain
+previously reported built-in arm-service state. The client does not open the hand, but it also does not maintain
 the final arm pose indefinitely after exit. Arm behavior then belongs to the standing/built-in
 controller; account for this when the hand is near the table or holding the can. For an immediate
 physical stop, use the operator's existing remote stop procedure.
